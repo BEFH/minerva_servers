@@ -105,6 +105,9 @@ jobs:
           keepgoing: ${{ env.keepgoing }}
         run: |         
             if [[ "${keepgoing}" == "true" ]]; then
-                echo ${{ secrets.GITHUB_TOKEN }} | singularity remote login -u ${{ secrets.GHCR_USERNAME }} --password-stdin oras://ghcr.io
-                singularity push container.sif oras://ghcr.io/${GITHUB_REPOSITORY}:${tag}
+                #echo ${{ secrets.GITHUB_TOKEN }} | singularity remote login -u ${{ secrets.GHCR_USERNAME }} --password-stdin oras://ghcr.io
+                #singularity push container.sif oras://ghcr.io/${GITHUB_REPOSITORY}:${tag}
+                echo ${{ secrets.SINGULARITY_KEY }} > /tmp/s.key
+                singularity remote login --tokenfile /tmp/s.key SylabsCloud
+                singularity push container.sif library://befh/rstudio/rstudio-server-conda:latest
             fi
