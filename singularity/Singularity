@@ -1,15 +1,39 @@
 Bootstrap: docker
-
 From: rocker/rstudio
 
 %files
-    init.sh /init.sh
+    condarc /etc/conda/condarc
 
 %post
     echo "lock-type=linkbased" > /etc/rstudio/file-locks
-    chmod 755 /init.sh
     wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh
     bash ~/miniconda.sh -b -p /opt/conda
+    source /opt/conda/etc/profile.d/conda.sh
+    conda install -c conda-forge -y mamba
 
+%environment
+    export CONDA_PREFIX=$RSTUDIO_CONDA_PREFIX
+	export RSTUDIO_WHICH_R=$RSTUDIO_R_BIN
+	export RETICULATE_PYTHON=$RSTUDIO_PY_BIN
+	export PASSWORD=$RSTUDIO_PASSWORD
+	export PORT=$RSTUDIO_PORT
+	export USER=$USER
+
+%runscript
+    echo "enabling conda" && \
+      source /opt/conda/etc/profile.d/conda.sh && \
+      echo "activating env $CONDA_PREFIX" && \
+      conda activate $CONDA_PREFIX && \
+      echo "starting RStudio Server" && \
+      rserver \
+        --www-address=127.0.0.1 \
+        --www-port=$PORT \
+        --rsession-which-r=$RSTUDIO_WHICH_R \
+        --rsession-ld-library-path=$CONDA_PREFIX/lib \
+        `# optional: old behaviour of R sessions` \
+        --auth-timeout-minutes=0 --auth-stay-signed-in-days=30  \
+        `# activate password authentication` \
+        --auth-none=0  --auth-pam-helper-path=pam-helper \
+        --server-user $USER
 
 
