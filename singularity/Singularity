@@ -8,7 +8,7 @@ From: rocker/rstudio
     echo "lock-type=linkbased" > /etc/rstudio/file-locks
     wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh
     bash ~/miniconda.sh -b -p /opt/conda
-    source /opt/conda/etc/profile.d/conda.sh
+    . /opt/conda/etc/profile.d/conda.sh
     conda install -c conda-forge -y mamba
 
 %environment
@@ -21,7 +21,7 @@ From: rocker/rstudio
 
 %runscript
     echo "enabling conda" && \
-      source /opt/conda/etc/profile.d/conda.sh && \
+      . /opt/conda/etc/profile.d/conda.sh && \
       echo "activating env $CONDA_PREFIX" && \
       conda activate $CONDA_PREFIX && \
       echo "starting RStudio Server" && \
