@@ -12,7 +12,7 @@ CONTAINER="/sc/arion/work/$USER/rstudio_latest.sif"  # path to singularity conta
 
 # Set-up temporary paths
 export RSTUDIO_TMP="${RSTUDIO_TMPDIR}/$(echo -n $CONDA_PREFIX | md5sum | awk '{print $1}')"
-mkdir -p $RSTUDIO_TMP/{run,var-lib-rstudio-server,local-share-rstudio,tmp}
+mkdir -p $RSTUDIO_TMP/{run,var-lib-rstudio-server,local-share-rstudio,tmp,srvrdr}
 
 export RSTUDIO_R_BIN=$CONDA_PREFIX/bin/R
 export RSTUDIO_PY_BIN=$CONDA_PREFIX/bin/python
@@ -39,4 +39,21 @@ singularity run \
 	--bind ${CONDA_PREFIX}:${CONDA_PREFIX} \
 `#  --bind ${RSTUDIO_TMP}/tmp:/tmp/rstudio-server` \
 	--bind $HOME/.config/rstudio:/home/rstudio/.config/rstudio \
-	$CONTAINER
+	--bind /hpc/packages
+	$CONTAINER  --auth-none 0 --auth-pam-helper-path=pam-helper \
+	--www-port $RSTUDIO_PORT --server-data-dir=$RSTUDIO_TMP/srvrdr \
+	--rsession-which-r=$RSTUDIO_WHICH_R \
+	--rsession-ld-library-path=$CONDA_PREFIX/lib \
+	--server-user $USER
+
+#old args:
+
+#  --www-address=127.0.0.1 \
+#        --www-port=$PORT \
+#        --rsession-which-r=$RSTUDIO_WHICH_R \
+#        --rsession-ld-library-path=$CONDA_PREFIX/lib \
+#        `# optional: old behaviour of R sessions` \
+#        --auth-timeout-minutes=0 --auth-stay-signed-in-days=30  \
+#        `# activate password authentication` \
+#        --auth-none=0  --auth-pam-helper-path=pam-helper \
+#        --server-user $USER
