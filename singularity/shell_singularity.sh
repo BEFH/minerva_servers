@@ -26,10 +26,15 @@ if [ -z "$CONDA_PREFIX" ]; then
   exit 1
 fi
 
-echo $RSTUDIO_TMP
+echo rserver --auth-none 0 --auth-pam-helper-path=pam-helper \
+	--www-port $RSTUDIO_PORT --server-data-dir=/serverdir \
+	--rsession-which-r=$RSTUDIO_R_BIN \
+	--rsession-ld-library-path=$CONDA_PREFIX/lib \
+	--server-user $USER
+
 
 echo "Starting rstudio service on port $RSTUDIO_PORT ..."
-singularity run \
+singularity shell \
 	--bind $RSTUDIO_TMP/var-lib-rstudio-server:/var/lib/rstudio-server \
 	--bind /sys/fs/cgroup/:/sys/fs/cgroup/:ro \
 	--bind database.conf:/etc/rstudio/database.conf \
@@ -42,20 +47,5 @@ singularity run \
   --bind $RSTUDIO_TMP/run:/serverdir \
   --bind $RSTUDIO_TMP/log:/var/log/rstudio/rstudio-server \
   --bind logging.conf:/etc/rstudio/logging.conf \
-	$CONTAINER  --auth-none 0 --auth-pam-helper-path=pam-helper \
-	--www-port $RSTUDIO_PORT --server-data-dir=/serverdir \
-	--rsession-which-r=$RSTUDIO_R_BIN \
-	--rsession-ld-library-path=$CONDA_PREFIX/lib \
-	--server-user $USER
+	$CONTAINER  
 
-#old args:
-
-#  --www-address=127.0.0.1 \
-#        --www-port=$PORT \
-#        --rsession-which-r=$RSTUDIO_WHICH_R \
-#        --rsession-ld-library-path=$CONDA_PREFIX/lib \
-#        `# optional: old behaviour of R sessions` \
-#        --auth-timeout-minutes=0 --auth-stay-signed-in-days=30  \
-#        `# activate password authentication` \
-#        --auth-none=0  --auth-pam-helper-path=pam-helper \
-#        --server-user $USER
