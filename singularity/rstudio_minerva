@@ -83,7 +83,7 @@ S_WAITING_INTERVAL=30
 S_RESOURCE="null"
 
 # Default env                   : shell default
-RS_ENV="null"
+RS_CONDAENV="null"
 
 ###############################################################################
 # Text coloring                                                               #
@@ -225,7 +225,7 @@ while [[ $# -gt 0 ]]; do
     shift; shift
     ;;
     -C|--conda)
-    RS_ENV="$2"
+    RS_CONDAENV="$2"
     shift; shift
     ;;
     *)
@@ -304,9 +304,9 @@ echoinfo "Getting username and shell\n"
 S_REMOTE_SHELL=$(ssh $S_HOSTNAME 'echo "$SHELL"' | grep -Eo '[^/]+$')
 S_USERNAME=$(ssh $S_HOSTNAME 'echo "$USER"')
 
-RS_WORKDIR=$HOME/minerva_jobs/rstudio
+RS_WORKDIR="/hpc/users/$S_USERNAME/minerva_jobs/rstudio"
 password_file=$RS_WORKDIR/.rstudio_onthefly_password
-image_filename="/sc/arion/work/${S_USERNAME}/rstudio_latest.sif"
+RS_IMAGE="/sc/arion/work/${S_USERNAME}/rstudio_latest.sif"
 RS_TMP=/tmp/${S_USERNAME}_RStudio
 
 
@@ -326,7 +326,7 @@ create_rstudio_passwd_on_file () {
   password2='thisisnotthepassword'
 
   passprompt="  Set a runtime password for RStudio (not network password):"
-  read -sp $passprompt password1
+  read -sp "$passprompt" password1
   printf "\n"
   while [[ $password1 = "" ]]; do
     echoerror "  Password is empty, please input again... "
@@ -621,17 +621,13 @@ echo "Remote Port:\$S_PORT_REMOTE" >> $S_FILE_IP
 
 ## Start RStudio ##
 
-if [[ $RS_ENV == "null" ]] || [[ $RS_ENV == \$CONDA_DEFAULT_ENV ]]; then
+if [[ $RS_CONDAENV == "null" ]] || [[ $RS_CONDAENV == \$CONDA_DEFAULT_ENV ]]; then
   RS_PREFIX=\$CONDA_PREFIX
-elif [[ $RS_ENV =~ "/" ]]; then
-  RS_PREFIX=$RS_ENV
+elif [[ $RS_CONDAENV =~ "/" ]]; then
+  RS_PREFIX=$RS_CONDAENV
 else
-  RS_PREFIX=\$(conda info --envs | awk -v env=$RS_ENV '\$1 == env {print \$2}')
+  RS_PREFIX=\$(conda info --envs | awk -v env=$RS_CONDAENV '\$1 == env {print \$2}')
 fi
-
-if 
-
-CONTAINER="/sc/arion/work/$USER/rstudio_latest.sif"  # path to singularity container (will be automatically downloaded)
 
 # Set-up temporary paths
 mkdir -p $RS_TMP/{run,var-lib-rstudio-server,local-share-rstudio}
@@ -644,29 +640,34 @@ if [ -z "$CONDA_PREFIX" ]; then
   exit 1
 fi
 
+source $password_file
+
 echo "Starting rstudio service on port $RSTUDIO_PORT ..."
-singularity run \
-  --bind $RS_TMP/var-lib-rstudio-server:/var/lib/rstudio-server \
-  --bind /sys/fs/cgroup/:/sys/fs/cgroup/:ro \
-  --bind $RS_WORKDIR/database.conf:/etc/rstudio/database.conf \
-  --bind $RS_WORKDIR/rsession.conf:/etc/rstudio/rsession.conf \
-  --bind $RS_TMP/local-share-rstudio:/home/rstudio/.local/share/rstudio \
-  --bind ${RS_PREFIX}:${RS_PREFIX} \
-  --bind $HOME/.config/rstudio:/home/rstudio/.config/rstudio \
-  --bind /hpc/packages \
-  --bind $RS_TMP/run:/serverdir \
+singularity run \\
+  --bind $RS_TMP/var-lib-rstudio-server:/var/lib/rstudio-server \\
+  --bind /sys/fs/cgroup/:/sys/fs/cgroup/:ro \\
+  --bind $RS_WORKDIR/database.conf:/etc/rstudio/database.conf \\
+  --bind $RS_WORKDIR/rsession.conf:/etc/rstudio/rsession.conf \\
+  --bind $RS_TMP/local-share-rstudio:/home/rstudio/.local/share/rstudio \\
+  --bind \${RS_PREFIX}:\${RS_PREFIX} \\
+  --bind \$HOME/.config/rstudio:/home/rstudio/.config/rstudio \\
+  --bind /hpc/packages \\
+  --bind $RS_TMP/run:/serverdir \\
 EOF
 
 for i in $RS_CONDADIRS; do
-  ssh $S_HOSTNAME "echo \"  --bind $i \\\"" >> $S_FILE_JOB
+  if ssh $S_HOSTNAME "test -e \"$i\""; then
+    bindstr="  --bind $i \\\\"
+    ssh $S_HOSTNAME "echo \"$bindstr\" >> $S_FILE_JOB"
+  fi
 done
 
 ssh $S_HOSTNAME "cat >> $S_FILE_JOB" <<<cat <<EOF
-  $CONTAINER  --auth-none 0 --auth-pam-helper-path=pam-helper \
-  --www-port \$S_PORT_REMOTE --server-data-dir=/serverdir \
-  --rsession-which-r=\$RSTUDIO_R_BIN \
-  --rsession-ld-library-path=$RS_PREFIX/lib \
-  --server-user $USER
+  $RS_IMAGE  --auth-none 0 --auth-pam-helper-path=pam-helper \\
+  --www-port \$S_PORT_REMOTE --server-data-dir=/serverdir \\
+  --rsession-which-r=\$RSTUDIO_R_BIN \\
+  --rsession-ld-library-path=$RS_PREFIX/lib \\
+  --server-user $S_USERNAME
 
 ## Done ##
 
@@ -801,7 +802,6 @@ echo -e "Remote port        : $S_REMOTE_PORT"
 echo -e "Local port         : $S_LOCAL_PORT"
 echo -e "SSH tunnel command : $S_FWDCMD"
 echo -e "URL                : http://localhost:$S_LOCAL_PORT"
-echo -e "Remote token       : $token"
 echo
 
 # write reconnect_info file
@@ -825,7 +825,7 @@ sleep 5
 
 # Copy connection information to the remote machine
 if [ -z ${S_MANUAL_MULTIPLEX+x} ]; then
-  scp $S_RCI $S_HOSTNAME:S_FILE_RECONNECT &> /dev/null
+  scp $S_RCI $S_HOSTNAME:$S_FILE_RECONNECT &> /dev/null
 fi
 
 # save url in variable

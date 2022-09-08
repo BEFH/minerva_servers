@@ -24,11 +24,11 @@ From: rocker/rstudio
       exec rserver "${@}"
 
 %runscript
+    #echo "activating env $CONDA_PREFIX" && \
+    #conda activate $CONDA_PREFIX && \
     echo "enabling conda" && \
       . /opt/conda/etc/profile.d/conda.sh && \
       . /opt/conda/etc/profile.d/mamba.sh && \
-      echo "activating env $CONDA_PREFIX" && \
-      conda activate $CONDA_PREFIX && \
       echo "starting RStudio Server" && \
       exec rserver "${@}"
 
