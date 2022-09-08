@@ -12,12 +12,7 @@ From: rocker/rstudio
     conda install -c conda-forge -y mamba
 
 %environment
-    export CONDA_PREFIX=$RSTUDIO_CONDA_PREFIX
-	export RSTUDIO_WHICH_R=$RSTUDIO_R_BIN
-	export RETICULATE_PYTHON=$RSTUDIO_PY_BIN
-	export PASSWORD=$RSTUDIO_PASSWORD
-	export PORT=$RSTUDIO_PORT
-	export USER=$USER
+    export CONDA_PREFIX=${RS_CONDAENV:-$CONDA_DEFAULT_ENV}
 
 %apprun rserver
     echo "enabling conda" && \

@@ -1,0 +1,855 @@
+#!/bin/bash
+
+###############################################################################
+#                                                                             #
+#  Script to run on a local computer to start a RStudio server on Minerva and #
+#  connect to it with a local browser                                         #
+#                                                                             #
+#  Minerva author : Brian Fulton-Howard                                       #
+#  Main author    : Samuel Fux                                                #
+#  Contributions  : Andreas Lugmayr, Mike Boss                                #
+#  Date           : October 2021                                              #
+#  Location       : ETH Zurich                                                #
+#  Version        : 0.5                                                       #
+#  Change history :                                                           #
+#                                                                             #
+#  07.09.2022    Allow resource specification,                                #
+#                integrate of rstudio,                                        #
+#                automatically use first project unless specified,            #
+#                and colorize outputs                                         #
+#  07.07.2022    Fix launching outside of home directory and                  #
+#                more robust token grabbing                                   #
+#  07.07.2022    Fix browser opening on Mac and support WSL                   #
+#  04.07.2022    Locks have potential fix but are disabled for now            #
+#  30.06.2022    Locks and free ports on remote, improved native              #
+#                remote storage of reconnect info, improved messages          #
+#  22.06.2022    Allow simultaneous sessions and specifying folder            #
+#  22.06.2022    Automatic multiplexing and check for code-server             #
+#  22.06.2022    Allow and validate longer walltimes                          #
+#  16.06.2022    Adapt for minerva and add autorestart support                #
+#  19.05.2022    JOBID is now saved to reconnect_info file                    #
+#  28.10.2021    Initial version of the script based on Jupyter script        #
+#                                                                             #
+###############################################################################
+
+###############################################################################
+# Configuration options, initalising variables and setting default values     #
+###############################################################################
+
+# Version
+S_VERSION="0.5"
+
+# Script directory
+# old RS_SCRIPTDIR=$(pwd)
+S_SCRIPTDIR=$HOME
+
+# hostname of the cluster to connect to
+if grep -q 'Host minerva[[:space:]]*$' $HOME/.ssh/config &> /dev/null; then
+  S_HOSTNAME="minerva"
+elif grep -q 'Host chimera[[:space:]]*$' $HOME/.ssh/config &> /dev/null; then
+  S_HOSTNAME="chimera"
+fi
+
+# Queue to use
+S_QUEUE="premium"
+
+# LSF Account
+S_ACCT="acc_null"
+
+# Custom job session name
+S_SESSION=""
+
+# order for initializing configuration options
+# 1. Defaults values set inside this script
+# 2. Command line options overwrite defaults
+# 3. Config file options  overwrite command line options
+
+# Configuration file default    : $HOME/.rs_config
+S_CONFIG_FILE="$HOME/.rs_config"
+
+# Number of CPU cores default   : 4 CPU cores
+S_NUM_CPU=4
+
+# Runtime limit default         : 12:00 hour
+S_RUN_TIME="12:00"
+
+# Memory default                : 4000 MB per core
+S_MEM_PER_CPU_CORE=4000
+
+# Waiting interval default      : 30 seconds
+S_WAITING_INTERVAL=30
+
+# Default resources             : none
+S_RESOURCE="null"
+
+# Default env                   : shell default
+RS_ENV="null"
+
+###############################################################################
+# Text coloring                                                               #
+###############################################################################
+
+echoinfo () {
+  echo -e "\033[32m[INFO] $@\033[0m"
+}
+
+echoerror () {
+  echo -e "\033[31m[ERROR] $@\033[0m"
+}
+
+echoalert () {
+  echo -e "\033[34;5m[INFO] $@\033[0m"
+}
+
+echowarn () {
+  echo -e "\033[34;5m[WARNING] $@\033[0m"
+}
+
+###############################################################################
+# Usage instructions                                                          #
+###############################################################################
+
+function display_help {
+cat <<-EOF
+$0: Script to start a RStudio server on Minerva from a local computer
+
+Usage: $(basename "$0") [options]
+
+Options:
+
+  -P | --project    1st available    LSF project name
+
+Optional arguments:
+
+  -n | --numcores   4                Number of CPU cores to be used on
+                                      the cluster
+  -q | --queue      premium          queue to be used on the cluster
+  -W | --runtime    12               Run time limit for the server in hours
+                                      and minutes H[H[H]]:MM
+  -m | --memory     4000             Memory limit in MB per core
+  -R | --resource                    Extra resource request like "himem"
+  -c | --config     ~/.rs_config     Configuration file for specifying options
+  -h | --help                        Display help for this script and quit
+  -i | --interval   30               Time interval (sec) for checking if the job
+                                      on the cluster already started
+  -v | --version                     Display version of the script and exit
+  -s | --server     minerva          SSH arguments for connecting to the server:
+                                      Will default to "minerva", then "chimera".
+                                      server name from .ssh/config, or e.g.
+                                      user@minerva.hpc.mssm.edu
+  -S | --session                     Session name to run multiple servers
+  -C | --conda      shell default    Conda env for running rstudio
+
+Examples:
+
+  $(basename $0) -n 4 -W 04:00 -m 2048
+
+  $(basename $0) --numcores 2 --runtime 01:30 --memory 2048
+
+  $(basename $0) -c $HOME/.rs_config
+
+Format of configuration file:
+
+S_NUM_CPU=1               # Number of CPU cores to be used on the cluster
+S_RUN_TIME="01:00"        # Run time limit for the server in hours and
+                            #   minutes H[H[H]]:MM
+S_MEM_PER_CPU_CORE=1024   # Memory limit in MB per core
+S_WAITING_INTERVAL=60     # Time interval to check if the job on the cluster
+                            #   already started
+S_QUEUE="premium"         # LSF queue to be used on the cluster
+S_SESSION=""              # Session name to run multiple servers
+S_ACCT="acc_SOMETHING"    # LSF account to be used on the cluster
+S_HOSTNAME="minerva"      # SSH host or username@host for connection
+
+You should have SSH ControlMaster enabled in your ~/.ssh/config file for this to
+work fully on the cluster. The script will manually multiplex otherwise, but
+this is not recommended.
+
+See https://en.wikibooks.org/wiki/OpenSSH/Cookbook/Multiplexing
+
+EOF
+exit 1
+}
+
+###############################################################################
+# Parse configuration options                                                 #
+###############################################################################
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -h|--help)
+    display_help
+    ;;
+    -v|--version)
+    echo -e "rstudio_minerva version: $S_VERSION\n"
+    exit
+    ;;
+    -n|--numcores)
+    S_NUM_CPU=$2
+    shift; shift
+    ;;
+    -s|--server)
+    S_HOSTNAME=$2
+    shift; shift
+    ;;
+    -q|--queue)
+    S_QUEUE=$2
+    shift; shift
+    ;;
+    -P|--project)
+    S_ACCT=$2
+    shift; shift
+    ;;
+    -W|--runtime)
+    S_RUN_TIME=$2
+    shift; shift
+    ;;
+    -m|--memory)
+    S_MEM_PER_CPU_CORE=$2
+    shift; shift
+    ;;
+    -c|--config)
+    S_CONFIG_FILE=$2
+    shift; shift
+    ;;
+    -i|--interval)
+    S_WAITING_INTERVAL=$2
+    shift; shift
+    ;;
+    -R|--resource)
+    S_RESOURCE=$2
+    shift; shift
+    ;;
+    -S|--session)
+    S_SESSION="_$2"
+    shift; shift
+    ;;
+    -C|--conda)
+    RS_ENV="$2"
+    shift; shift
+    ;;
+    *)
+    echowarn "ignoring unknown option $1 \n"
+    shift
+    ;;
+  esac
+done
+
+###############################################################################
+# Check key configuration options                                             #
+###############################################################################
+
+# check if user has a configuration file and source it to initialize options
+if [ -f "$S_CONFIG_FILE" ]; then
+  echoinfo "Found configuration file $S_CONFIG_FILE"
+  echoinfo "Initializing configuration from file ${S_CONFIG_FILE}:"
+  cat "$S_CONFIG_FILE"
+  source "$S_CONFIG_FILE"
+fi
+
+
+# Check hostname
+get_hostinfo() {
+    awk -v hrx="[Hh][Oo][Ss][Tt][[:space:]]+$1[[:space:]]*$" \
+   '$0 ~ "[Hh]ost[[:space:]]" {a = 0} $0 ~ hrx {a = 1; next} a == 1 {print}' \
+   $HOME/.ssh/config | sed -E 's/^[[:blank:]]*|[[:blank:]]*$//g'
+}
+
+if [ -z ${S_HOSTNAME+x} ]; then
+  echoerror "Hostname is not set. Please specify with --server option.\n\n"
+  display_help
+elif [[ "$S_HOSTNAME" =~ "@" ]]; then
+  echoinfo "Valid username and server $S_HOSTNAME selected\n\n"
+elif ! [ -f $HOME/.ssh/config ]; then
+  echoerror "Username not specified and .ssh/config does not exist.\n\n"
+  display_help
+elif ! [[ $(get_hostinfo $S_HOSTNAME | wc -l) -gt 0 ]]; then
+  echoerror "Username not specified and host not in .ssh/config.\n\n"
+  display_help
+elif ! get_hostinfo $S_HOSTNAME | grep -iq HostName; then
+  echoerror "Hostname not specified in .ssh/config.\n\n"
+  display_help
+elif ! get_hostinfo $S_HOSTNAME | grep -iq User; then
+  echoerror "Hostname not specified in .ssh/config.\n\n"
+  display_help
+else
+  echoinfo "Connecting with the following settings:\n"
+  get_hostinfo $S_HOSTNAME | grep -iE "HostName|User"
+  echo
+fi
+
+S_BASE_RECONNECT=".reconnect_info_rs$S_SESSION"
+S_FILE_RECONNECT="/hpc/users/$S_USERNAME/$S_BASE_RECONNECT"
+
+# Check if multiplexing is enabled, otherwise warn and compensate
+if ! [ -f $HOME/.ssh/config ] || \
+   ! grep -q "ControlPath" $HOME/.ssh/config &> /dev/null; then
+  echoalert "You should enable ControlMaster in your .ssh/config.\n"
+  echoalert "See https://en.wikibooks.org/wiki/OpenSSH/Cookbook/Multiplexing\n"
+  if ! [ -d $HOME/.ssh/cm_socket ]; then
+    mkdir -p $HOME/.ssh/cm_socket
+  fi
+  S_MANUAL_MULTIPLEX=true
+  ssh -M -S ~/.ssh/cm_socket/%r@%h:%p -o "ControlPersist=10m" $S_HOSTNAME echo -e "Logged in as \$USER\n"
+  S_HOSTNAME="-S ~/.ssh/cm_socket/%r@%h:%p $S_HOSTNAME"
+else
+  scp $S_HOSTNAME:$S_FILE_RECONNECT $S_SCRIPTDIR/ &> /dev/null
+fi
+
+###############################################################################
+# Set up directories and files                                                #
+###############################################################################
+
+echoinfo "Getting username and shell\n"
+S_REMOTE_SHELL=$(ssh $S_HOSTNAME 'echo "$SHELL"' | grep -Eo '[^/]+$')
+S_USERNAME=$(ssh $S_HOSTNAME 'echo "$USER"')
+
+RS_WORKDIR=$HOME/minerva_jobs/rstudio
+password_file=$RS_WORKDIR/.rstudio_onthefly_password
+image_filename="/sc/arion/work/${S_USERNAME}/rstudio_latest.sif"
+RS_TMP=/tmp/${S_USERNAME}_RStudio
+
+
+###############################################################################
+# Check directories and passwords                                             #
+###############################################################################
+
+# check workdir
+if ! ssh $S_HOSTNAME "test -d \"$RS_WORKDIR\""; then
+  ssh $S_HOSTNAME "mkdir -p \"$RS_WORKDIR\""
+fi
+
+
+# Check for password
+create_rstudio_passwd_on_file () {
+  password1='1'
+  password2='thisisnotthepassword'
+
+  passprompt="  Set a runtime password for RStudio (not network password):"
+  read -sp $passprompt password1
+  printf "\n"
+  while [[ $password1 = "" ]]; do
+    echoerror "  Password is empty, please input again... "
+  done
+
+  counter=0
+  while [[ $password1 != $password2 ]]; do
+    read -sp "  Confirm password: " password2
+    printf "\n"
+    if [[ $password1 != $password2 ]]; then
+      echoerror "  Passwords do not agree, try again..."
+      let counter+=1
+
+      if [[ $counter -lt 3 ]]; then
+        continue;
+      else
+        echoerror "  Failed 3 times, aborting..."
+        exit 1;
+      fi
+    fi
+  done
+
+  password=$password1
+
+  # write to file
+  ssh $S_HOSTNAME "mkdir -p $(dirname $password_file)"
+  ssh $S_HOSTNAME "cat > $password_file" <<<cat <<EOF
+# Password generated by rstudio_minerva"
+export RSTUDIO_PASSWORD=$password
+EOF
+}
+
+check_set_runtime_password () {
+  if ! ssh $S_HOSTNAME "test -e \"$password_file\""; then
+    echoinfo "$password_file is not found, we need to create it."
+    create_rstudio_passwd_on_file
+  fi
+}
+
+check_set_runtime_password
+
+# Check rstudio config files
+
+if ! ssh $S_HOSTNAME "test -e \"$RS_WORKDIR/database.conf\""; then
+  ssh $S_HOSTNAME "cat > $RS_WORKDIR/database.conf" <<<cat <<EOF
+provider=sqlite
+directory=/var/lib/rstudio-server
+EOF
+fi
+
+if ! ssh $S_HOSTNAME "test -e \"$RS_WORKDIR/rsession.conf\""; then
+  ssh $S_HOSTNAME "cat > $RS_WORKDIR/rsession.conf" <<<cat <<EOF
+# add your configuration here
+
+EOF
+fi
+
+###############################################################################
+# Check for leftover files                                                    #
+###############################################################################
+
+# check for reconnect_info in the current directory on the local computer
+
+macos_open () {
+  native_app="$HOME/.minerva_rstudio_app/RStudio_minerva${S_SESSION}_$1-darwin-x64/RStudio_minerva${S_SESSION}_$1.app"
+  if [[ -d $native_app ]]; then
+    echoinfo "Opening in native mode"
+    open -n $native_app
+  elif which nativefier &> /dev/null; then
+    nativefier --quiet -n "RStudio_minerva${S_SESSION}_$1" \
+      http://localhost:$1 .minerva_rstudio_app 2> /dev/null
+    echoinfo "Opening in native mode"
+    sleep 2
+    open -n $native_app
+  elif open -n -a 'Google Chrome' --args "--app=http://localhost:$1" 2> /dev/null ; then
+    echoinfo "Opened in Chromeless Google Chrome"
+  else
+    echoinfo "Opening in default browser"
+    open "http://localhost:$1"
+  fi
+}
+
+echoinfo "Checking if reconnection is possible\n"
+
+S_RCI=$S_SCRIPTDIR/$S_BASE_RECONNECT
+if [ -f $S_RCI ]; then
+  RC_BJOB=$(sed -nE 's/^BJOB[a-zA-Z ]+: (.+)/\1/p' $S_RCI)
+  S_CHECKJOB="bjobs | grep -q $RC_BJOB && echo running || echo done"
+  RC_JOBSTATE=$(ssh $S_HOSTNAME $S_CHECKJOB)
+  if [[ $RC_JOBSTATE == "running" ]]; then
+    echo
+    cat $S_RCI
+    echo
+    RC_SSH=$(sed -nE 's/^SSH[a-zA-Z ]+: (.+)/\1/p' $S_RCI)
+    RC_URL=$(sed -nE 's/^URL[a-zA-Z ]+: (.+)/\1/p' $S_RCI)
+    RC_PRT=$(sed -nE 's/^Local[a-zA-Z ]+: (.+)/\1/p' $S_RCI)
+
+    echoinfo "Starting browser and connecting it to the server"
+    echoinfo "Connecting to url $RC_URL"
+
+    # start local browser if possible
+    if [[ "$OSTYPE" == "linux-gnu" ]]; then
+      lsof -i :$RC_PRT > /dev/null || $RC_SSH
+      if which wlslview 2>1 > /dev/null; then
+        wslview $S_URL # USING Windows Subsystem for Linux
+      elif ! [ -z ${WSLENV+x} ]; then
+        echoalert "Your are using Windows Subsystem for Linux, but wslu is not "
+        echoalert "available.\n"
+        echoalert "Install wslu for automatic browser opening.\n"
+        echoinfo "Please open $RC_URL in your browser."
+      else
+        xdg-open $RC_URL
+      fi
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+      lsof -i :$RC_PRT > /dev/null || $RC_SSH
+      macos_open $RC_PRT
+    elif [[ "$OSTYPE" == "msys" ]]; then # Git Bash on Windows 10
+      lsof -i :$RC_PRT > /dev/null || $RC_SSH # Don't know if this works
+      start $RC_URL
+    else
+      echowarn "Your OS does not allow starting browsers automatically."
+      echoinfo "Please open $RC_URL in your browser."
+      echoinfo "check if port $RC_PRT is forwarded first."
+    fi
+    exit 0
+  else
+    echowarn "Job expired; checking for left over files from previous sessions"
+    echoinfo "Found local session file, deleting it ..."
+    rm $S_RCI
+  fi
+else
+  echoinfo "Checking for left over files from previous sessions"
+fi
+
+# check for log files from a previous session in the home directory of the cluster
+if ssh $S_HOSTNAME "test -f $S_FILE_RECONNECT"; then
+  echoinfo "Found old remote session file, deleting it ..."
+  ssh $S_HOSTNAME "rm $S_FILE_RECONNECT"
+fi
+
+S_FILE_IP="/hpc/users/$S_USERNAME/rsip$S_SESSION"
+if ssh $S_HOSTNAME "test -f $S_FILE_IP"; then
+  echoinfo "Found old IP file, deleting it ..."
+  ssh $S_HOSTNAME "rm $S_FILE_IP"
+fi
+
+S_FILE_JOB=".rstudio$S_SESSION.lsf"
+if ssh $S_HOSTNAME "test -f $S_FILE_JOB"; then
+  echoinfo "Found old job file, deleting it ..."
+  ssh $S_HOSTNAME "rm $S_FILE_JOB"
+fi
+
+
+###############################################################################
+# Check configuration options                                                 #
+###############################################################################
+
+echoinfo "Validating command line options\n"
+
+# check number of CPU cores
+
+# check if S_NUM_CPU an integer
+if ! [[ "$S_NUM_CPU" =~ ^[0-9]+$ ]]; then
+  echoerror "$S_NUM_CPU -> Incorrect format. Please specify number of CPU cores as an integer and try again\n"
+  display_help
+fi
+
+# check if S_NUM_CPU is <= 48
+if [ "$S_NUM_CPU" -gt "48" ]; then
+  echoerror "$S_NUM_CPU -> Larger than 48. No distributed memory supported, therefore the number of CPU cores needs to be smaller or equal to 128\n"
+  display_help
+fi
+
+if [ "$S_NUM_CPU" -gt "0" ]; then
+  echoinfo "Requesting $S_NUM_CPU CPU cores for running the server"
+fi
+
+# check if S_RUN_TIME is provided in HH:MM format
+if [[ "$S_RUN_TIME" =~ ^([0-9]{1,3}):([0-9]{2})$ ]] ; then
+  S_HOURS=${BASH_REMATCH[1]}
+  S_MIN=$(echo ${BASH_REMATCH[2]} | sed 's/^0\(.\)$/\1/')
+  S_MIN_TOT=$(($S_MIN + 60 * $S_HOURS))
+  if [[ $S_MIN_TOT -gt 8640 ]] ; then
+    echoerror "$S_RUN_TIME -> Runtime limit is too long. Please try again\n"
+    display_help
+  fi
+  echoinfo "Run time limit set to $S_RUN_TIME"
+else
+  echoerror "$S_RUN_TIME -> Incorrect format. Please specify runtime limit in the format H:MM, HH:MM, or HHH:MM and try again\n"
+  display_help
+fi
+
+# check if S_MEM_PER_CPU_CORE is an integer
+if ! [[ "$S_MEM_PER_CPU_CORE" =~ ^[0-9]+$ ]]; then
+  echoerror "$S_MEM_PER_CPU_CORE -> Memory limit must be an integer, please try again\n"
+  display_help
+else
+  echoinfo "Memory per core set to $S_MEM_PER_CPU_CORE MB"
+fi
+
+# check if S_WAITING_INTERVAL is an integer
+if ! [[ "$S_WAITING_INTERVAL" =~ ^[0-9]+$ ]]; then
+  echoerror "$S_WAITING_INTERVAL -> Waiting time interval [seconds] must be an integer, please try again\n"
+  display_help
+else
+  echoinfo "Setting waiting time interval for checking the start of the job to $S_WAITING_INTERVAL seconds"
+fi
+
+# check if project is usable
+
+if [[ $S_ACCT == "acc_null" ]]; then
+  echoinfo "Project is not specified, or is acc_null, using 1st avail project."
+  S_ACCT=$(ssh $S_HOSTNAME mybalance | grep acc_ | awk '{ print $2 }' | head -1)
+  if [[ $S_ACCT == "" ]]; then
+    echoerror "You don't have any project assigned, please contact HPC administrator"
+    exit 2
+  fi
+  echoinfo "Project not specified. Using $S_ACCT."
+elif ! ssh $S_HOSTNAME mybalance | grep -q "$S_ACCT"; then
+  echoerror "You must specify a valid LSF project or use the default, please try again"
+  display_help
+fi
+
+###############################################################################
+# Start rstudio server on the cluster                                         #
+###############################################################################
+
+RS_CONDADIRS=$(ssh chimera "conda info" | awk '
+  $0 ~ "envs directories" {a = 1; print $4; next} \
+  $0 ~ ":" {a = 0} a == 1 {print $1}')
+
+ssh $S_HOSTNAME "cat > $S_FILE_JOB" <<<cat <<EOF
+#!/usr/bin/env bash
+#BSUB -J rstudio$S_SESSION
+#BSUB -P $S_ACCT
+#BSUB -q $S_QUEUE
+#BSUB -n $S_NUM_CPU
+#BSUB -R span[hosts=1]
+#BSUB -W $S_RUN_TIME
+#BSUB -R rusage[mem=$S_MEM_PER_CPU_CORE]
+#BSUB -o %J.stdout
+#BSUB -eo %J.stderr
+#BSUB -L /bin/bash
+EOF
+
+if [[ $S_RESOURCE != "null" ]]; then
+  ssh $S_HOSTNAME "cat >> $S_FILE_JOB" <<<cat <<EOF
+#BSUB -R $S_RESOURCE
+EOF
+fi
+
+ssh $S_HOSTNAME "cat >> $S_FILE_JOB" <<<cat <<EOF
+
+
+export http_proxy=http://172.28.7.1:3128
+export https_proxy=http://172.28.7.1:3128
+export all_proxy=http://172.28.7.1:3128
+export no_proxy=localhost,*.chimera.hpc.mssm.edu,172.28.0.0/16
+
+S_IP_REMOTE="\$(hostname -i)"
+echo "Remote IP:\$S_IP_REMOTE" >> $S_FILE_IP
+
+module load singularity/3.6.4
+
+for lf in \$lockfiles; do
+  if [[ -d \$lf ]]; then
+    owner=\$(stat -c "%U" \$lf)
+    if [[ \$USER != \$owner ]]; then
+      echo "FAIL" > $S_FILE_IP
+      echo "HOSTNAME:\$HOSTNAME" >> $S_FILE_IP
+      echo "OWNER:\$owner" >> $S_FILE_IP
+      exit 1
+    else
+      rm -rf \$lf
+      echo "Lock cleaned"
+      echo
+    fi
+  fi
+done
+
+local_used_ports=\$(netstat -4 -ltn | grep LISTEN | awk '{ print \$4 }' | awk -F":" '{ print \$2 }' )
+
+for p in {8850..9000}; do
+  if [[ \$local_used_ports != *\$p* ]]; then
+    echo "Using local available port \$p"
+    S_PORT_REMOTE=\$p
+    break
+  fi
+done
+
+echo "Remote Port:\$S_PORT_REMOTE" >> $S_FILE_IP
+
+## Start RStudio ##
+
+if [[ $RS_ENV == "null" ]] || [[ $RS_ENV == \$CONDA_DEFAULT_ENV ]]; then
+  RS_PREFIX=\$CONDA_PREFIX
+elif [[ $RS_ENV =~ "/" ]]; then
+  RS_PREFIX=$RS_ENV
+else
+  RS_PREFIX=\$(conda info --envs | awk -v env=$RS_ENV '\$1 == env {print \$2}')
+fi
+
+if 
+
+CONTAINER="/sc/arion/work/$USER/rstudio_latest.sif"  # path to singularity container (will be automatically downloaded)
+
+# Set-up temporary paths
+mkdir -p $RS_TMP/{run,var-lib-rstudio-server,local-share-rstudio}
+
+export RSTUDIO_R_BIN=$CONDA_PREFIX/bin/R
+export RSTUDIO_PY_BIN=$CONDA_PREFIX/bin/python
+
+if [ -z "$CONDA_PREFIX" ]; then
+  echo "Activate a conda env or specify CONDA_PREFIX"
+  exit 1
+fi
+
+echo "Starting rstudio service on port $RSTUDIO_PORT ..."
+singularity run \
+  --bind $RS_TMP/var-lib-rstudio-server:/var/lib/rstudio-server \
+  --bind /sys/fs/cgroup/:/sys/fs/cgroup/:ro \
+  --bind $RS_WORKDIR/database.conf:/etc/rstudio/database.conf \
+  --bind $RS_WORKDIR/rsession.conf:/etc/rstudio/rsession.conf \
+  --bind $RS_TMP/local-share-rstudio:/home/rstudio/.local/share/rstudio \
+  --bind ${RS_PREFIX}:${RS_PREFIX} \
+  --bind $HOME/.config/rstudio:/home/rstudio/.config/rstudio \
+  --bind /hpc/packages \
+  --bind $RS_TMP/run:/serverdir \
+EOF
+
+for i in $RS_CONDADIRS; do
+  ssh $S_HOSTNAME "echo \"  --bind $i \\\"" >> $S_FILE_JOB
+done
+
+ssh $S_HOSTNAME "cat >> $S_FILE_JOB" <<<cat <<EOF
+  $CONTAINER  --auth-none 0 --auth-pam-helper-path=pam-helper \
+  --www-port \$S_PORT_REMOTE --server-data-dir=/serverdir \
+  --rsession-which-r=\$RSTUDIO_R_BIN \
+  --rsession-ld-library-path=$RS_PREFIX/lib \
+  --server-user $USER
+
+## Done ##
+
+if [[ "\$?" -ne "0" ]]; then
+  echo "A problem occured when starting singularity container, failed. "
+  exit 1
+fi
+
+sing_pid=\$!
+echo "RStudio started in the singularity container with PID \$sing_pid."
+echo "Making sure it is alive"
+
+for i in {3..1}; do
+  echo "Checking \$i, next check in 5 seconds."
+  if ps -p \$sing_pid; then
+    sleep 5
+  else
+    echo "Container process is dead, abort"
+    echo
+    exit 1
+  fi
+done
+
+cleanup () {
+  echo "Job is ending, cleaning up session."
+  for lf in \$lockfiles; do
+    if [[ -d \$lf ]] && [[ \$USER = \$(stat -c %U \$lf) ]]; then
+        echo "Removing lockfile \$lf"
+        rm -rf \$lf
+    fi
+  done
+  kill -0 \$sing_pid
+}
+
+trap cleanup SIGTERM SIGQUIT SIGINT
+wait
+cleanup
+EOF
+
+
+TRY=1
+SUCCESS=0
+
+while ( [ $TRY -lt 4 ] && [ $SUCCESS -eq 0 ] ); do
+  # run the job on Minerva and save the ip of the compute node in the home directory of the user on Euler
+  echo
+  echoinfo "Connecting to $S_HOSTNAME to start the server in a batch job"
+  S_BJOB_OUT=$(ssh $S_HOSTNAME "bsub < $S_FILE_JOB")
+  S_BJOB_ID=$(echo $S_BJOB_OUT | awk '/is submitted/{print substr($2, 2, length($2)-2);}')
+  
+  # wait until batch job has started, poll every $S_WAITING_INTERVAL seconds to check if IP file exists
+  # once the file exists and is not empty the batch job has started
+  echoinfo "Waiting for job to start\n"
+  if [[ $S_REMOTE_SHELL == "fish" ]]; then
+  ssh -T $S_HOSTNAME <<ENDSSH
+  while ! [ -e $S_FILE_IP -a -s $S_FILE_IP ]
+    echo 'Waiting for server to start, sleep for $S_WAITING_INTERVAL sec'
+    sleep $S_WAITING_INTERVAL
+  end
+ENDSSH
+  else
+  ssh -T $S_HOSTNAME <<ENDSSH
+  while ! [ -e $S_FILE_IP -a -s $S_FILE_IP ]; do
+    echo 'Waiting for server to start, sleep for $S_WAITING_INTERVAL sec'
+    sleep $S_WAITING_INTERVAL
+  done
+ENDSSH
+  fi
+
+  echo
+  
+  echoinfo "Giving RStudio server a few seconds to start\n"
+  sleep 7
+  
+  # get remote ip, port and token from files stored on Minerva
+  if ! ssh $S_HOSTNAME "cat $S_FILE_IP" | grep -q FAIL; then
+    echoinfo "Receiving ip and port from the server"
+    S_REMOTE_IP=$(ssh $S_HOSTNAME "cat $S_FILE_IP | grep -m1 'Remote IP' | cut -d ':' -f 2")
+    S_REMOTE_PORT=$(ssh $S_HOSTNAME "cat $S_FILE_IP | grep -m1 'Remote Port' | cut -d ':' -f 2")
+    SUCCESS=1
+  else
+    hostname=$(ssh $S_HOSTNAME "cat $S_FILE_IP | grep -m1 'HOSTNAME' | cut -d ':' -f 2")
+    owner=$(ssh $S_HOSTNAME "cat $S_FILE_IP | grep -m1 'OWNER' | cut -d ':' -f 2")
+    if [ $TRY -eq 3 ]; then
+      echoerror "$owner is running a session on $hostname, therefore execution is blocked..."
+      echoerror "Please resubmit your job to get your job dispatched to another node. "
+      echoerror "Change your arguments like -n -M -W slightly."
+      exit 1
+    else
+      echoalert "Attempt $TRY failed due to $owner running a session on $hostname:"
+      echoalert "Trying again"
+      ssh $S_HOSTNAME "rm $S_FILE_IP"
+    fi
+  fi
+  TRY=$(($TRY+1))
+done
+
+# check if the IP, the port and the token are defined
+if  [[ "$S_REMOTE_IP" == "" ]]; then
+echoerror "remote ip is not defined. Terminating script."
+echoerror "* Please check login to the cluster and check with bjobs if the batch job on the cluster is running and terminate it with bkill."
+exit 1
+fi
+
+
+# get a free port on local computer
+## S_LOCAL_PORT=$((3 * 2**14 + RANDOM % 2**14))
+
+echoinfo "Determining free port on local computer"
+
+find_port() {
+  PRT=$1
+  while ( lsof -i :$PRT -P -n | grep LISTEN &> /dev/null); do
+    PRT=$((PRT+1))
+  done
+  echo $PRT
+}
+
+if ! [ -z ${S_SESSION+x} ]; then
+  S_LOCAL_PORT=$(find_port 8890)
+else
+  S_LOCAL_PORT=$(find_port 8899)
+fi
+
+S_FWDCMD="ssh $S_HOSTNAME -L $S_LOCAL_PORT:$S_REMOTE_IP:$S_REMOTE_PORT -fNT"
+
+# print information about IP, ports and token
+echoinfo "Server info:"
+echo
+echo -e "Remote IP address  : $S_REMOTE_IP"
+echo -e "Remote port        : $S_REMOTE_PORT"
+echo -e "Local port         : $S_LOCAL_PORT"
+echo -e "SSH tunnel command : $S_FWDCMD"
+echo -e "URL                : http://localhost:$S_LOCAL_PORT"
+echo -e "Remote token       : $token"
+echo
+
+# write reconnect_info file
+cat <<EOF > $S_RCI
+Restart file
+Remote IP address : $S_REMOTE_IP
+Remote port       : $S_REMOTE_PORT
+Local port        : $S_LOCAL_PORT
+SSH tunnel        : $S_FWDCMD
+URL               : http://localhost:$S_LOCAL_PORT
+BJOB ID           : $S_BJOB_ID
+EOF
+
+# setup SSH tunnel from local computer to compute node via login node
+echoinfo "Setting up SSH tunnel for connecting the browser to the server"
+$S_FWDCMD
+
+# SSH tunnel is started in the background, pause 5 seconds to make sure
+# it is established before starting the browser
+sleep 5
+
+# Copy connection information to the remote machine
+if [ -z ${S_MANUAL_MULTIPLEX+x} ]; then
+  scp $S_RCI $S_HOSTNAME:S_FILE_RECONNECT &> /dev/null
+fi
+
+# save url in variable
+S_URL=http://localhost:$S_LOCAL_PORT
+echoinfo "Starting browser and connecting it to the server"
+echoinfo "Connecting to url $S_URL"
+
+# start local browser if possible
+if [[ "$OSTYPE" == "linux-gnu" ]]; then
+  if which wlslview 2>1 > /dev/null; then
+    wslview $S_URL # USING Windows Subsystem for Linux
+  elif ! [ -z ${WSLENV+x} ]; then
+    echowarn "Your are using Windows Subsystem for Linux, but wslu is not "
+    echowarn "available.\n"
+    echowarn "Install wslu for automatic browser opening.\n"
+    echoinfo "Please open $S_URL in your browser."
+  else
+    xdg-open $S_URL
+  fi
+elif [[ "$OSTYPE" == "darwin"* ]]; then
+  macos_open $S_LOCAL_PORT
+elif [[ "$OSTYPE" == "msys" ]]; then # Git Bash on Windows 10
+  start $S_URL
+else
+  echowarn "Your OS does not allow starting browsers automatically."
+  echoinfo "Please open $S_URL in your browser."
+fi
