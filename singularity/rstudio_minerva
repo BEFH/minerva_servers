@@ -39,7 +39,7 @@
 ###############################################################################
 
 # Version
-S_VERSION="0.5"
+S_VERSION="0.5.1"
 
 # Script directory
 # old RS_SCRIPTDIR=$(pwd)
