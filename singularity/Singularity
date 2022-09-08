@@ -1,5 +1,5 @@
 Bootstrap: docker
-From: rocker/rstudio
+From: rocker/rstudio:4.1.3
 
 #%files
     #condarc /etc/conda/condarc

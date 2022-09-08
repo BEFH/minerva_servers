@@ -632,17 +632,17 @@ fi
 # Set-up temporary paths
 mkdir -p $RS_TMP/{run,var-lib-rstudio-server,local-share-rstudio}
 
-export RSTUDIO_R_BIN=$CONDA_PREFIX/bin/R
-export RSTUDIO_PY_BIN=$CONDA_PREFIX/bin/python
+export RSTUDIO_R_BIN=\$RS_PREFIX/bin/R
+export RSTUDIO_PY_BIN=\$RS_PREFIX/bin/python
 
-if [ -z "$CONDA_PREFIX" ]; then
+if [ -z "\$RS_PREFIX" ]; then
   echo "Activate a conda env or specify CONDA_PREFIX"
   exit 1
 fi
 
 source $password_file
 
-echo "Starting rstudio service on port $RSTUDIO_PORT ..."
+echo "Starting rstudio service on port \$S_PORT_REMOTE ..."
 singularity run \\
   --bind $RS_TMP/var-lib-rstudio-server:/var/lib/rstudio-server \\
   --bind /sys/fs/cgroup/:/sys/fs/cgroup/:ro \\
