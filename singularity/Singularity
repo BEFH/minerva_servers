@@ -1,9 +1,6 @@
 Bootstrap: docker
 From: rocker/rstudio:4.1.3
 
-#%files
-    #condarc /etc/conda/condarc
-
 %post
     echo "lock-type=linkbased" > /etc/rstudio/file-locks
     wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh
@@ -24,12 +21,7 @@ From: rocker/rstudio:4.1.3
       exec rserver "${@}"
 
 %runscript
-    #echo "activating env $CONDA_PREFIX" && \
-    #conda activate $CONDA_PREFIX && \
-    echo "enabling conda" && \
-      . /opt/conda/etc/profile.d/conda.sh && \
-      . /opt/conda/etc/profile.d/mamba.sh && \
-      echo "starting RStudio Server" && \
+    echo "starting RStudio Server" && \
       exec rserver "${@}"
 
 
