@@ -89,6 +89,9 @@ S_RESOURCE="null"
 # Default env                   : shell default
 RS_CONDAENV="null"
 
+# Default image                 : "default" means dl to /sc/arion/work/$USER/
+RS_IMAGE="default"
+
 ###############################################################################
 # Text coloring                                                               #
 ###############################################################################
@@ -145,6 +148,8 @@ Optional arguments:
   -C | --conda      shell default    Conda env for running rstudio
        --isolated                    Run RStudio server without home directory
                                       or environment variables
+  -I | --image      dload to work   Singularity image to use for the server.
+                                      Downloaded automatically if not specified.
 
 Examples:
 
@@ -238,6 +243,10 @@ while [[ $# -gt 0 ]]; do
     RS_CONDAENV="$2"
     shift; shift
     ;;
+    -I|--image)
+    RS_IMAGE="$2"
+    shift; shift
+    ;;
     *)
     echowarn "ignoring unknown option $1 \n"
     shift
@@ -310,7 +319,6 @@ S_REMOTE_SHELL=$(ssh $S_HOSTNAME 'echo "$SHELL"' | grep -Eo '[^/]+$')
 S_USERNAME=$(ssh $S_HOSTNAME 'echo "$USER"')
 
 RS_WORKDIR="/hpc/users/$S_USERNAME/minerva_jobs/rstudio"
-RS_IMAGE="/sc/arion/work/${S_USERNAME}/rstudio_latest.sif"
 RS_TMP=/tmp/${S_USERNAME}${S_SESSION}_RStudio
 
 S_BASE_RECONNECT=".reconnect_info_rs$S_SESSION"
@@ -403,14 +411,20 @@ fi
 
 # check image
 
-if ! ssh $S_HOSTNAME "test -e \"$RS_IMAGE\""; then
-  image_url="library://befh/rstudio/rstudio-server-conda:latest"
-  echoinfo "Pulling the default image $image_url"
-  echoinfo "Pulling image to $RS_IMAGE"
-  ssh $S_HOSTNAME <<ENDSSH
-  module load singularity/3.6.4
-  singularity pull --name $RS_IMAGE --arch amd64 $image_url
+if [[ $RS_IMAGE == "default" ]]; then
+  RS_IMAGE="/sc/arion/work/${S_USERNAME}/rstudio_latest.sif"
+  if ! ssh $S_HOSTNAME "test -e \"$RS_IMAGE\""; then
+    image_url="library://befh/rstudio/rstudio-server-conda:latest"
+   echoinfo "Pulling the default image $image_url"
+   echoinfo "Pulling image to $RS_IMAGE"
+   ssh $S_HOSTNAME <<ENDSSH
+   module load singularity/3.6.4
+   singularity pull --name $RS_IMAGE --arch amd64 $image_url
 ENDSSH
+  fi
+elif ! ssh $S_HOSTNAME "test -e \"$RS_IMAGE\""; then
+  echoerror "Specified image \"$RS_IMAGE\" does not exist"
+  exit 1
 fi
 
 ###############################################################################
@@ -586,7 +600,7 @@ fi
 # Start rstudio server on the cluster                                         #
 ###############################################################################
 
-RS_CONDADIRS=$(ssh chimera "conda info" | awk '
+RS_CONDADIRS=$(ssh $S_HOSTNAME "conda info" | awk '
   $0 ~ "envs directories" {a = 1; print $4; next} \
   $0 ~ ":" {a = 0} a == 1 {print $1}')
 
