@@ -1,24 +1,56 @@
 Bootstrap: docker
-From: rocker/rstudio:4.1.3
+From: rocker/rstudio:4.2
+
+%files
+    singularity/00-modulepath.sh /etc/profile.d/
+    singularity/00-modulepath.csh /etc/profile.d/
 
 %post
+    apt-get update && \
+    apt-get install -y wget lua5.3 lua-bit32 lua-posix lua-posix-dev \
+      liblua5.3-0 liblua5.3-dev tcl tcl-dev tcl8.6 tcl8.6-dev libtcl8.6 && \
+    apt-get clean
+    wget https://github.com/TACC/Lmod/archive/refs/tags/8.7.12.tar.gz && \
+    tar xf 8.7.12.tar.gz && \
+    rm -f 8.7.12.tar.gz && \
+    cd Lmod-8.7.12 && \
+    ./configure --prefix=/opt/apps && \
+    make install && \
+    chmod a+rX /opt/apps && \
+    cd .. && \
+    rm -rf cd Lmod-8.7.12 && \
+    mkdir -p /etc/fish/conf.d && \
+    ln -s /opt/apps/lmod/lmod/init/profile  /etc/profile.d/z00_lmod.sh && \
+    ln -s /opt/apps/lmod/lmod/init/cshrc  /etc/profile.d/z00_lmod.csh && \
+    ln -s /opt/apps/lmod/lmod/init/profile.fish /etc/fish/conf.d/z00_lmod.fish
     echo "lock-type=linkbased" > /etc/rstudio/file-locks
     wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh
     bash ~/miniconda.sh -b -p /opt/conda
     . /opt/conda/etc/profile.d/conda.sh
     conda install -c conda-forge -y mamba
+    echo "done"
 
 %environment
-    export CONDA_PREFIX=${RS_CONDAENV:-$CONDA_DEFAULT_ENV}
+    export MODULEPATH=/usr/share/lmod/lmod/modulefiles/Core:/opt/hpc/packages/minerva-centos7/modulefiles:/opt/hpc/packages/minerva-common/modulefiles
+    export RS_CONDAENV=${RS_CONDAENV:-$CONDA_DEFAULT_ENV}
 
 %apprun rserver
     echo "enabling conda" && \
       . /opt/conda/etc/profile.d/conda.sh && \
       . /opt/conda/etc/profile.d/mamba.sh && \
-      echo "activating env $CONDA_PREFIX" && \
-      conda activate $CONDA_PREFIX && \
+      echo "activating env $RS_CONDAENV" && \
+      conda activate $RS_CONDAENV && \
       echo "starting RStudio Server" && \
-      exec rserver "${@}"
+      exec /usr/lib/rstudio-server/bin/rserver "${@}"
+
+%apprun bash
+    echo "enabling conda" && \
+      . /opt/conda/etc/profile.d/conda.sh && \
+      . /opt/conda/etc/profile.d/mamba.sh && \
+      echo "activating env $RS_CONDAENV" && \
+      conda activate $RS_CONDAENV && \
+      echo "starting BASH" && \
+      /bin/bash
 
 %runscript
     echo "starting RStudio Server" && \

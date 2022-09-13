@@ -11,9 +11,11 @@
 #                  : Andreas Lugmayr, Mike Boss                               #
 #  Date            : October 2021                                             #
 #  Location        : Mount Sinai (originally ETH Zurich)                      #
-#  Version         : 0.5.2                                                    #
+#  Version         : 0.6                                                      #
 #  Change history  :                                                          #
 #                                                                             #
+#  13.09.2022    Isolation working, validate successful startup,              #
+#                specify img, speed, verbosity, print password                #
 #  08.09.2022    fix authentication, non-working isolated environments,       #
 #                enable module system (with setting var) and conda lmod       #
 #  08.09.2022    Moved working files to workdir, bugfixes, img download       #
@@ -41,7 +43,7 @@
 ###############################################################################
 
 # Version
-S_VERSION="0.5.2"
+S_VERSION="0.6"
 
 # Script directory
 # old RS_SCRIPTDIR=$(pwd)
@@ -319,7 +321,7 @@ S_REMOTE_SHELL=$(ssh $S_HOSTNAME 'echo "$SHELL"' | grep -Eo '[^/]+$')
 S_USERNAME=$(ssh $S_HOSTNAME 'echo "$USER"')
 
 RS_WORKDIR="/hpc/users/$S_USERNAME/minerva_jobs/rstudio"
-RS_TMP=/tmp/${S_USERNAME}${S_SESSION}_RStudio
+RS_TMP=/tmp/${S_USERNAME}${S_SESSION}_RStudio_1
 
 S_BASE_RECONNECT=".reconnect_info_rs$S_SESSION"
 S_FILE_RECONNECT="$RS_WORKDIR/$S_BASE_RECONNECT"
@@ -327,7 +329,9 @@ S_FILE_PASSWORD="$RS_WORKDIR/.rstudio_onthefly_password"
 S_FILE_JOB="$RS_WORKDIR/rstudio$S_SESSION.lsf"
 S_FILE_IP="$RS_WORKDIR/rsip$S_SESSION"
 S_FILE_LOGCONF="$RS_WORKDIR/logging.conf"
+S_FILE_BASHPROF="$RS_WORKDIR/bash_profile$S_SESSION"
 S_DIR_LOGCONF="$RS_WORKDIR/serverlogs/$S_SESSION"
+S_DIR_CONFIG="/hpc/users/$S_USERNAME/.config/rstudio"
 
 ###############################################################################
 # Check directories, files, image, and password                               #
@@ -335,15 +339,34 @@ S_DIR_LOGCONF="$RS_WORKDIR/serverlogs/$S_SESSION"
 
 echoinfo "Checking directories, files, image, and password"
 
+info_workdir=$(echoinfo "Creating working directory")
+info_logdir=$(echoinfo "Creating log directory")
+info_confdir=$(echoinfo "Creating config directory")
+
+ssh $S_HOSTNAME bash <<ENDSSH
 # check workdir
-if ! ssh $S_HOSTNAME "test -d \"$RS_WORKDIR\""; then
-  ssh $S_HOSTNAME "mkdir -p \"$RS_WORKDIR\""
+if [[ ! -d $RS_WORKDIR ]]; then
+  mkdir -p $RS_WORKDIR
+  echo $info_workdir
 fi
 
 # check logdir
-if ! ssh $S_HOSTNAME "test -d \"$S_DIR_LOGCONF\""; then
-  ssh $S_HOSTNAME "mkdir -p \"$S_DIR_LOGCONF\""
+if [[ ! -d $S_DIR_LOGCONF ]]; then
+  mkdir -p $S_DIR_LOGCONF
+  echo $info_logdir
 fi
+
+# check confdir
+if [[ ! -d $S_DIR_CONFIG ]]; then
+  mkdir -p $S_DIR_CONFIG
+  echo $info_confdir
+fi
+
+# check fakehome
+if [[ ! -d $RS_TMP/home ]]; then
+  mkdir -p $RS_TMP/home
+fi
+ENDSSH
 
 # Check for password
 create_rstudio_passwd_on_file () {
@@ -415,9 +438,9 @@ if [[ $RS_IMAGE == "default" ]]; then
   RS_IMAGE="/sc/arion/work/${S_USERNAME}/rstudio_latest.sif"
   if ! ssh $S_HOSTNAME "test -e \"$RS_IMAGE\""; then
     image_url="library://befh/rstudio/rstudio-server-conda:latest"
-   echoinfo "Pulling the default image $image_url"
-   echoinfo "Pulling image to $RS_IMAGE"
-   ssh $S_HOSTNAME <<ENDSSH
+    echoinfo "Pulling the default image $image_url"
+    echoinfo "Pulling image to $RS_IMAGE"
+    ssh $S_HOSTNAME <<ENDSSH
    module load singularity/3.6.4
    singularity pull --name $RS_IMAGE --arch amd64 $image_url
 ENDSSH
@@ -510,21 +533,26 @@ else
 fi
 
 # check for log files from a previous session in the home directory of the cluster
-if ssh $S_HOSTNAME "test -f $S_FILE_RECONNECT"; then
-  echoinfo "Found old remote session file, deleting it ..."
-  ssh $S_HOSTNAME "rm $S_FILE_RECONNECT"
+info_sessionfile=$(echoinfo "Found old remote session file, deleting it ...")
+info_ipfile=$(echoinfo "Found old IP file, deleting it ...")
+info_jobfile=$(echoinfo "Found old job file, deleting it ...")
+
+ssh $S_HOSTNAME bash <<ENDSSH
+if [[ -f $S_FILE_RECONNECT ]]; then
+  echo $info_sessionfile
+  rm $S_FILE_RECONNECT
 fi
 
-if ssh $S_HOSTNAME "test -f $S_FILE_IP"; then
-  echoinfo "Found old IP file, deleting it ..."
-  ssh $S_HOSTNAME "rm $S_FILE_IP"
+if [[ -f $S_FILE_IP ]]; then
+  echo $info_ipfile
+  rm $S_FILE_IP
 fi
 
-if ssh $S_HOSTNAME "test -f $S_FILE_JOB"; then
-  echoinfo "Found old job file, deleting it ..."
-  ssh $S_HOSTNAME "rm $S_FILE_JOB"
+if [[ -f $S_FILE_JOB ]]; then
+  echo $info_jobfile
+  rm $S_FILE_JOB
 fi
-
+ENDSSH
 
 ###############################################################################
 # Check configuration options                                                 #
@@ -583,6 +611,8 @@ fi
 
 # check if project is usable
 
+echoinfo "Checking LSF project"
+
 if [[ $S_ACCT == "acc_null" ]]; then
   echoinfo "Project is not specified, or is acc_null, using 1st avail project."
   S_ACCT=$(ssh $S_HOSTNAME mybalance | grep acc_ | awk '{ print $2 }' | head -1)
@@ -600,15 +630,37 @@ fi
 # Start rstudio server on the cluster                                         #
 ###############################################################################
 
+echoinfo "Computing conda environment"
+
 RS_CONDADIRS=$(ssh $S_HOSTNAME "conda info" | awk '
   $0 ~ "envs directories" {a = 1; print $4; next} \
   $0 ~ ":" {a = 0} a == 1 {print $1}')
+
+
+if [[ $RS_CONDAENV == "null" ]]; then
+  echoinfo "Conda environment not specified; detecting default."
+  RS_CONDAEP=$(ssh $S_HOSTNAME -t 'bash -lc "echo \$CONDA_DEFAULT_ENV \$CONDA_PREFIX"' 2> /dev/null)
+  RS_CONDANF=$(echo $RS_CONDAEP | awk '1 {print NF}')
+  if [[ $RS_CONDANF -ne 2 ]]; then
+    echoerror "Conda not functioning on Minerva"
+    exit 1
+  fi
+  RS_CONDAENV=$(echo $RS_CONDAEP | awk '1 {print $1}' | tr -d '\r')
+  RS_PREFIX=$(echo $RS_CONDAEP | awk '1 {print $2}' | tr -d '\r')
+elif [[ $RS_CONDAENV =~ "/" ]]; then
+  RS_PREFIX=$RS_CONDAENV
+else
+  RS_PREFIX=$(ssh $S_HOSTNAME "conda info --envs" |
+              awk -v env=$RS_CONDAENV '\$1 == env {print \$2}')
+fi
+
+echoinfo "Using environment $RS_CONDAENV at $RS_PREFIX"
 
 ssh $S_HOSTNAME "cat > $S_FILE_LOGCONF" <<<cat <<EOF
 [*]
 log-level=debug
 logger-type=file
-log-dir=$S_DIR_LOGCONF
+log-dir=/rstudio_logs
 
 [@rserver]
 max-size-mb=10
@@ -617,6 +669,14 @@ max-rotations=50
 delete-days=10
 warn-syslog=0
 EOF
+
+ssh $S_HOSTNAME "cat > $S_FILE_BASHPROF" <<<cat <<EOF
+  . /opt/conda/etc/profile.d/conda.sh && \
+  . /opt/conda/etc/profile.d/mamba.sh && \
+  mamba activate $RS_CONDAENV
+EOF
+
+echoinfo "Building LSF jobscript"
 
 ssh $S_HOSTNAME "cat > $S_FILE_JOB" <<<cat <<EOF
 #!/usr/bin/env bash
@@ -655,7 +715,7 @@ for lf in \$lockfiles; do
   if [[ -d \$lf ]]; then
     owner=\$(stat -c "%U" \$lf)
     if [[ \$USER != \$owner ]]; then
-      echo "FAIL" > $S_FILE_IP
+      echo "Status:BUSY" > $S_FILE_IP
       echo "HOSTNAME:\$HOSTNAME" >> $S_FILE_IP
       echo "OWNER:\$owner" >> $S_FILE_IP
       exit 1
@@ -681,22 +741,13 @@ echo "Remote Port:\$S_PORT_REMOTE" >> $S_FILE_IP
 
 ## Start RStudio ##
 
-if [[ $RS_CONDAENV == "null" ]] || [[ $RS_CONDAENV == \$CONDA_DEFAULT_ENV ]]; then
-  export RS_CONDAENV=\$CONDA_DEFAULT_ENV
-  export RS_PREFIX=\$CONDA_PREFIX
-elif [[ $RS_CONDAENV =~ "/" ]]; then
-  export RS_PREFIX=$RS_CONDAENV
-else
-  export RS_PREFIX=\$(conda info --envs | awk -v env=$RS_CONDAENV '\$1 == env {print \$2}')
-fi
-
 # Set-up temporary paths
-mkdir -p $RS_TMP/{run,var-lib-rstudio-server,local-share-rstudio}
+mkdir -p $RS_TMP/{run,var-lib-rstudio-server,home,tmp}
 
-export RSTUDIO_R_BIN=\$RS_PREFIX/bin/R
-export RSTUDIO_PY_BIN=\$RS_PREFIX/bin/python
+export RSTUDIO_R_BIN=$RS_PREFIX/bin/R
+export RSTUDIO_PY_BIN=$RS_PREFIX/bin/python
 
-if [ -z "\$RS_PREFIX" ]; then
+if [ -z "$RS_PREFIX" ]; then
   echo "Activate a conda env or specify CONDA_PREFIX"
   exit 1
 fi
@@ -709,16 +760,16 @@ singularity run \\
   --bind /sys/fs/cgroup/:/sys/fs/cgroup/:ro \\
   --bind $RS_WORKDIR/database.conf:/etc/rstudio/database.conf \\
   --bind $RS_WORKDIR/rsession.conf:/etc/rstudio/rsession.conf \\
-  --bind $RS_TMP/local-share-rstudio:/home/rstudio/.local/share/rstudio \\
-  --bind \${RS_PREFIX}:\${RS_PREFIX} \\
-  --bind \$HOME/.config/rstudio:/home/rstudio/.config/rstudio \\
+  --bind ${RS_PREFIX}:${RS_PREFIX} \\
   --bind $S_FILE_LOGCONF:/etc/rstudio/logging.conf \\
   --bind /hpc/packages \\
   --bind $RS_TMP/run:/serverdir \\
+  --bind $S_DIR_LOGCONF:/rstudio_logs \\
+  --bind $RS_TMP/tmp:/tmp/rstudio-server \\
   --app rserver \\
   --env PASSWORD=\$PASSWORD \\
   --env RS_CONDAENV=$RS_CONDAENV \\
-  --env USER=\$USER \\
+  --env USER=$S_USERNAME \\
   --cleanenv \\
 EOF
 
@@ -746,7 +797,7 @@ ENDSSH
 else
   ssh -T $S_HOSTNAME <<ENDSSH
   if [ ! -z "\$MODULEPATH" ]; then
-    for j in \${MODULEPATH//,/ }; do
+    for j in \${MODULEPATH//:/ }; do
       bindstr="  --bind \$j \\\\"
       echo "\$bindstr" >> $S_FILE_JOB
     done
@@ -756,8 +807,15 @@ fi
 
 if [[ S_ISOLATED -eq 1 ]]; then
   ssh $S_HOSTNAME "cat >> $S_FILE_JOB" <<<cat <<EOF
-  --env HOME=/home/rstudio \\
   --no-home \\
+  --home $RS_TMP/home:/myhome \\
+  --bind $RS_TMP/home:/myhome \\
+  --bind $S_DIR_CONFIG:/myhome/.config/rstudio \\
+  --bind $S_FILE_BASHPROF:/myhome/.bash_profile \\
+EOF
+else
+  ssh $S_HOSTNAME "cat >> $S_FILE_JOB" <<<cat <<EOF
+  --bind $S_FILE_BASHPROF:/hpc/users/$S_USER/.bash_profile \\
 EOF
 fi
 
@@ -767,16 +825,31 @@ ssh $S_HOSTNAME "cat >> $S_FILE_JOB" <<<cat <<EOF
   --rsession-which-r=\$RSTUDIO_R_BIN \\
   --rsession-ld-library-path=$RS_PREFIX/lib \\
   --secure-cookie-key-file /serverdir/secure-cookie-key \\
-  --server-user $S_USERNAME
+  --server-user $S_USERNAME &
 
 ## Done ##
 
-if [[ "\$?" -ne "0" ]]; then
-  echo "A problem occured when starting singularity container, failed. "
-  exit 1
-fi
-
 sing_pid=\$!
+sing_stat=\$?
+
+for i in {3..1}; do
+  echo "Checking \$i, next check in 5 seconds."
+  if ps -p \$sing_pid; then
+    sleep 5
+  else
+    echo "Status:DEAD" >> $S_FILE_IP
+    echo
+    exit 1
+  fi
+done
+
+if [[ \$sing_stat -ne "0" ]]; then
+  echo "Status:FAIL" >> $S_FILE_IP
+  echo "Code:\$sing_stat" >> $S_FILE_IP
+  exit 1
+else
+  echo "Status:GOOD" >> $S_FILE_IP
+fi
 
 cleanup () {
   echo "Job is ending, cleaning up session."
@@ -808,34 +881,39 @@ while ( [ $TRY -lt 4 ] && [ $SUCCESS -eq 0 ] ); do
   # wait until batch job has started, poll every $S_WAITING_INTERVAL seconds to check if IP file exists
   # once the file exists and is not empty the batch job has started
   echoinfo "Waiting for job to start\n"
-  if [[ $S_REMOTE_SHELL == "fish" ]]; then
-  ssh -T $S_HOSTNAME <<ENDSSH
-  while ! [ -e $S_FILE_IP -a -s $S_FILE_IP ]
-    echo 'Waiting for server to start, sleep for $S_WAITING_INTERVAL sec'
-    sleep $S_WAITING_INTERVAL
-  end
-ENDSSH
-  else
-  ssh -T $S_HOSTNAME <<ENDSSH
+  ssh -T $S_HOSTNAME bash <<ENDSSH
   while ! [ -e $S_FILE_IP -a -s $S_FILE_IP ]; do
-    echo 'Waiting for server to start, sleep for $S_WAITING_INTERVAL sec'
+    echo 'Waiting for job to start, sleep for $S_WAITING_INTERVAL sec'
     sleep $S_WAITING_INTERVAL
   done
 ENDSSH
-  fi
 
   echo
   
-  echoinfo "Giving RStudio server a few seconds to start\n"
-  sleep 7
+  echoinfo "Waiting for server to start\n"
+  ssh -T $S_HOSTNAME bash <<ENDSSH
+  wait_time=0
+  while [[ \$wait_time -lt 25 ]] && ! grep -q "Status" $S_FILE_IP; do
+    let wait_time+=5
+    echo 'Waiting for server to start, sleep for 5 sec'
+    sleep 5
+  done
+ENDSSH
   
   # get remote ip, port and token from files stored on Minerva
-  if ! ssh $S_HOSTNAME "cat $S_FILE_IP" | grep -q FAIL; then
+  if ! ssh $S_HOSTNAME "grep -q Status $S_FILE_IP"; then
+    echoerror "Server did not report status"
+    exit 1
+  fi
+
+  S_REMOTE_STATUS=$(ssh $S_HOSTNAME "cat $S_FILE_IP |
+                    grep -m1 'Status' | cut -d ':' -f 2")
+  if [[ $S_REMOTE_STATUS == "GOOD" ]]; then
     echoinfo "Receiving ip and port from the server"
     S_REMOTE_IP=$(ssh $S_HOSTNAME "cat $S_FILE_IP | grep -m1 'Remote IP' | cut -d ':' -f 2")
     S_REMOTE_PORT=$(ssh $S_HOSTNAME "cat $S_FILE_IP | grep -m1 'Remote Port' | cut -d ':' -f 2")
     SUCCESS=1
-  else
+  elif [[ $S_REMOTE_STATUS == "BUSY" ]]; then
     hostname=$(ssh $S_HOSTNAME "cat $S_FILE_IP | grep -m1 'HOSTNAME' | cut -d ':' -f 2")
     owner=$(ssh $S_HOSTNAME "cat $S_FILE_IP | grep -m1 'OWNER' | cut -d ':' -f 2")
     if [ $TRY -eq 3 ]; then
@@ -848,6 +926,13 @@ ENDSSH
       echoalert "Trying again"
       ssh $S_HOSTNAME "rm $S_FILE_IP"
     fi
+  elif [[ $S_REMOTE_STATUS == "DEAD" ]]; then
+    echoerror "Server died while starting"
+    exit 1
+  elif [[ $S_REMOTE_STATUS == "FAIL" ]]; then
+    S_REMOTE_EXIT=$(ssh $S_HOSTNAME "cat $S_FILE_IP | grep -m1 'Code' | cut -d ':' -f 2")
+    echoerror "Server died with the exit code $S_REMOTE_EXIT"
+    exit $S_REMOTE_EXIT
   fi
   TRY=$(($TRY+1))
 done
@@ -885,9 +970,12 @@ S_FWDCMD="ssh $S_HOSTNAME -L $S_LOCAL_PORT:$S_REMOTE_IP:$S_REMOTE_PORT -fNT"
 echoinfo "Setting up SSH tunnel for connecting the browser to the server"
 $S_FWDCMD
 
-# SSH tunnel is started in the background, pause 5 seconds to make sure
+# SSH tunnel is started in the background, pause 3 seconds to make sure
 # it is established before starting the browser
-sleep 5
+sleep 3
+
+S_PASSWORD=$(ssh chimera "cat $S_FILE_PASSWORD" | 
+             awk -F "=" '$1 == "export PASSWORD" {print $2}')
 
 # print information about IP, ports and token
 echoinfo "Server info:"
@@ -897,6 +985,7 @@ echo -e "Remote port        : $S_REMOTE_PORT"
 echo -e "Local port         : $S_LOCAL_PORT"
 echo -e "SSH tunnel command : $S_FWDCMD"
 echo -e "URL                : http://localhost:$S_LOCAL_PORT"
+echo -e "Password           : $S_PASSWORD"
 echo
 
 # write reconnect_info file
@@ -908,6 +997,7 @@ Local port        : $S_LOCAL_PORT
 SSH tunnel        : $S_FWDCMD
 URL               : http://localhost:$S_LOCAL_PORT
 BJOB ID           : $S_BJOB_ID
+Password          : $S_PASSWORD
 EOF
 
 # Copy connection information to the remote machine
