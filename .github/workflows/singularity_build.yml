@@ -10,6 +10,9 @@ on:
   # Do the builds on all pull requests (to test them)
   pull_request: []
 
+  release:
+    types: [created]
+
 jobs:
   changes:
     name: "Changed Singularity Recipes"
@@ -58,6 +61,7 @@ jobs:
             squashfs-tools \
             libseccomp-dev \
             pkg-config
+
       - name: Install Singularity
         if: ${{ env.keepgoing == 'true' }}
         env:
@@ -74,7 +78,8 @@ jobs:
           cd singularity-ce-${SINGULARITY_VERSION} && \
           ./mconfig -p /usr/local && \
           make -C builddir && \
-          sudo make -C builddir install          
+          sudo make -C builddir install
+
       - name: Check out code for the container build
         if: ${{ env.keepgoing == 'true' }}
         uses: actions/checkout@v2
@@ -99,15 +104,49 @@ jobs:
            echo "Present working directory: $PWD"
            ls
          fi
-      - name: Login and Deploy Container
-        if: (github.event_name != 'pull_request')
+
+      - name: Install GPG Key
+        id: gpgkey
         env:
-          keepgoing: ${{ env.keepgoing }}
-        run: |         
-            if [[ "${keepgoing}" == "true" ]]; then
-                #echo ${{ secrets.GITHUB_TOKEN }} | singularity remote login -u ${{ secrets.GHCR_USERNAME }} --password-stdin oras://ghcr.io
-                #singularity push container.sif oras://ghcr.io/${GITHUB_REPOSITORY}:${tag}
-                echo ${{ secrets.SINGULARITY_KEY }} > /tmp/s.key
-                singularity remote login --tokenfile /tmp/s.key SylabsCloud
-                singularity push -U container.sif library://befh/rstudio/rstudio-server-conda:latest
-            fi
+          passphrase: ${{ secrets.PASSPHRASE }}
+          gpgkey: ${{ secrets.GPGKEY }}
+        if: |
+            ${{ env.keepgoing == 'true' }} &&
+            ${{ env.PASSPHRASE != '' }} &&
+            ${{ env.GPGKEY != '' }}
+        run: |
+            ## Key secret should replace newlines with "&&&" in secret.
+            ##  Use perl -p -e 's/\n/&&&/' private.asc
+            echo $GPGKEY | perl -p -e 's/&&&/\n/g' > private.asc
+            singularity key import private.asc < <(echo $PASSPHRASE)
+            rm private.asc
+
+      - name: Sign Container
+        id: signsif
+        if: |
+            (github.event_name != 'pull_request') &&
+            (steps.gpgkey.outcome == 'success') &&
+            ${{ env.keepgoing == 'true' }}
+        run: |
+            singularity sign container.sif < <(echo ${{ secrets.PASSPHRASE }})
+
+      - name: Login and Deploy Container (release)
+        if: |
+            (github.event_name != 'pull_request') &&
+            ${{ env.keepgoing == 'true' }} &&
+            (github.event_name == 'release') &&
+            (github.event.action == 'created')
+        run: |
+            echo ${{ secrets.SINGULARITY_KEY }} > /tmp/s.key
+            singularity remote login --tokenfile /tmp/s.key SylabsCloud
+            singularity push -U container.sif library://befh/rstudio/rstudio-server:${{ github.ref }}
+
+      - name: Login and Deploy Container (push)
+        if: |
+            (github.event_name != 'pull_request') &&
+            ${{ env.keepgoing == 'true' }} &&
+            (github.event_name == 'push')
+        run: |
+            echo ${{ secrets.SINGULARITY_KEY }} > /tmp/s.key
+            singularity remote login --tokenfile /tmp/s.key SylabsCloud
+            singularity push -U container.sif library://befh/rstudio-dev/rstudio-server:${{ github.ref }}
