@@ -110,8 +110,7 @@ jobs:
         env:
           passphrase: ${{ secrets.PASSPHRASE }}
           gpgkey: ${{ secrets.GPGKEY }}
-        if: |
-            ${{ env.keepgoing == 'true' &&
+        if: ${{ env.keepgoing == 'true' &&
                 env.PASSPHRASE != '' &&
                 env.GPGKEY != '' }}
         run: |
@@ -123,16 +122,14 @@ jobs:
 
       - name: Sign Container
         id: signsif
-        if: |
-            ${{ github.event_name != 'pull_request' &&
+        if: ${{ github.event_name != 'pull_request' &&
                 steps.gpgkey.outcome == 'success' &&
                 env.keepgoing == 'true' }}
         run: |
             singularity sign container.sif < <(echo ${{ secrets.PASSPHRASE }})
 
       - name: Login and Deploy Container (release)
-        if: |
-            ${{ github.event_name != 'pull_request' &&
+        if: ${{ github.event_name != 'pull_request' &&
                 env.keepgoing == 'true' &&
                 github.event_name == 'release' &&
                 github.event.action == 'created' }}
@@ -142,8 +139,7 @@ jobs:
             singularity push -U container.sif library://befh/rstudio/rstudio-server:${{ github.ref }}
 
       - name: Login and Deploy Container (push)
-        if: |
-            ${{ github.event_name != 'pull_request' &&
+        if: ${{ github.event_name != 'pull_request' &&
                 env.keepgoing == 'true' &&
                 github.event_name == 'push' }}
         run: |
