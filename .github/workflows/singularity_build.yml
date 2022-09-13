@@ -111,9 +111,9 @@ jobs:
           passphrase: ${{ secrets.PASSPHRASE }}
           gpgkey: ${{ secrets.GPGKEY }}
         if: |
-            ${{ env.keepgoing == 'true' }} &&
-            ${{ env.PASSPHRASE != '' }} &&
-            ${{ env.GPGKEY != '' }}
+            ${{ env.keepgoing == 'true' &&
+                env.PASSPHRASE != '' &&
+                env.GPGKEY != '' }}
         run: |
             ## Key secret should replace newlines with "&&&" in secret.
             ##  Use perl -p -e 's/\n/&&&/' private.asc
@@ -124,18 +124,18 @@ jobs:
       - name: Sign Container
         id: signsif
         if: |
-            (github.event_name != 'pull_request') &&
-            (steps.gpgkey.outcome == 'success') &&
-            ${{ env.keepgoing == 'true' }}
+            ${{ github.event_name != 'pull_request' &&
+                steps.gpgkey.outcome == 'success' &&
+                env.keepgoing == 'true' }}
         run: |
             singularity sign container.sif < <(echo ${{ secrets.PASSPHRASE }})
 
       - name: Login and Deploy Container (release)
         if: |
-            (github.event_name != 'pull_request') &&
-            ${{ env.keepgoing == 'true' }} &&
-            (github.event_name == 'release') &&
-            (github.event.action == 'created')
+            ${{ github.event_name != 'pull_request' &&
+                env.keepgoing == 'true' &&
+                github.event_name == 'release' &&
+                github.event.action == 'created' }}
         run: |
             echo ${{ secrets.SINGULARITY_KEY }} > /tmp/s.key
             singularity remote login --tokenfile /tmp/s.key SylabsCloud
@@ -143,9 +143,9 @@ jobs:
 
       - name: Login and Deploy Container (push)
         if: |
-            (github.event_name != 'pull_request') &&
-            ${{ env.keepgoing == 'true' }} &&
-            (github.event_name == 'push')
+            ${{ github.event_name != 'pull_request' &&
+                env.keepgoing == 'true' &&
+                github.event_name == 'push' }}
         run: |
             echo ${{ secrets.SINGULARITY_KEY }} > /tmp/s.key
             singularity remote login --tokenfile /tmp/s.key SylabsCloud
