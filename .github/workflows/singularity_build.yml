@@ -79,6 +79,7 @@ jobs:
   build-test-containers:
     needs:
       - select_filelist
+    if: ${{ needs.select_filelist.outputs.recipes != "[]" }}
     runs-on: ubuntu-latest
     strategy:
       # Keep going on other deployments if anything bloops
@@ -145,8 +146,10 @@ jobs:
          if ${{ github.event_name == 'release' &&
                 github.event.action == 'created' }}; then
            echo "tag=${{ github.ref }}" >> $GITHUB_ENV
+           echo "reponame=${{ github.event.repository.name }}" >> $GITHUB_ENV
          else
            echo "tag=${{ github.sha }}" >> $GITHUB_ENV
+           echo "reponame=${{ github.event.repository.name }}_dev" >> $GITHUB_ENV
          fi
 
       - name: Install GPG Key
@@ -178,4 +181,4 @@ jobs:
         run: |
             echo ${{ secrets.SINGULARITY_KEY }} > /tmp/s.key
             singularity remote login --tokenfile /tmp/s.key SylabsCloud
-            singularity push -U container.sif library://befh/${{ github.event.repository.name }}/${containername}:${tag}
+            singularity push -U container.sif library://befh/${reponame}/${containername}:${tag}
