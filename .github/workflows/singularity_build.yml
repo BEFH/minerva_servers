@@ -35,6 +35,7 @@ jobs:
 
   changes:
     name: "Changed Singularity Recipes"
+    if: github.event_name != 'release'
     runs-on: ubuntu-latest
     outputs:
       changed_file: ${{ steps.format.outputs.files }}
@@ -55,9 +56,28 @@ jobs:
         id: format
         run: |
           remove_newlines() {
-            tr -d "\n" <<< '${{ steps.filter.outputs.output }}'
+            tr -d "\n" <<< '${{ steps.filter.outputs.output }}' | \
+              sed 's/^\[ /['
           }
           echo "::set-output name=files::"$(remove_newlines)
       - name: Print
         run: echo ${{ steps.format.outputs.files }}
   
+  select_filelist:
+    needs: [recipes, changes]
+    if: ${{ needs.changes.result == 'success' ||
+            github.event_name == 'release' }}
+    runs-on: ubuntu-latest
+    outputs:
+      recipes: ${{ steps.select.outputs.files }}
+    steps:
+      - name: Select recipe list
+        id: select
+        run: |
+          if ${{ github.event_name == 'release' }}; then
+            echo '::set-output name=files::${{ needs.recipes.outputs.changed_file }}'
+          else
+            echo '::set-output name=files::${{ needs.changes.outputs.changed_file }}'
+          fi
+      - name: Print
+        run: echo ${{ steps.select.outputs.files }}
