@@ -27,8 +27,8 @@ jobs:
         run: |
           echo "::set-output name=files::$(
             find . -name "*Singularity*" |
-            xargs -d \n printf \"%s\", |
-            sed -e 's/^/[/' -e 's/,$/]\n/'
+            xargs -d \\n printf \"%s\", |
+            sed -e 's/^/[/' -e 's/,$/]\\n/'
           )"
       - name: Print files
         run: echo "${{ steps.ff.outputs.files }}"
@@ -45,17 +45,14 @@ jobs:
           format: 'json'
       - name: Print files
         run: echo "${{ steps.files.outputs.added_modified }}"
-      - name: create-json
-        id: create-json
-        uses: jsdaniell/create-json@1.1.2
-        with:
-          name: "repo_files_modified.json"
-          json: ${{ steps.files.outputs.added_modified }}
       - name: Keep only singularity recipes
         id: filter
-        uses: sergeysova/jq-action@v2
+        uses: edwardgeorge/jq-action@main
         with:
-          cmd: jq '.[] | select(test("Singularity"))' repo_files_modified.json
+          input: ${{ steps.files.outputs.added_modified }}
+          script: '[.[] | select(test("Singularity"))]'
       - name: Print rules
-        run: echo "${{ steps.filter.outputs.value }}"
+        run: |
+          echo "${{ steps.filter.outputs.value }}" | \
+            xargs -d \n printf %s, | sed -e 's/^/[/' -e 's/,$/]\n/'
   
