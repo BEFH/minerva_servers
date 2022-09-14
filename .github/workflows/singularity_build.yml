@@ -22,14 +22,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
-      - name: Find recipe files
-        uses: jeertmans/filesfinder@v0.3.1-rc.2
-        id: ff
-        with:
-          # Only argument, a single string, to be passed as arguments to ff.
-          # See `ff --help` for more help.
-          # Default: "*"
-          args: "*Singularity*"
       - name: Print files
         run: echo "${{ steps.ff.outputs.files }}"
       - name: Find recipe files 2
