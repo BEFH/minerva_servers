@@ -88,6 +88,9 @@ jobs:
 
     name: Build ${{ matrix.recipe }}
     steps:
+      - name: Check out code for the container build
+        uses: actions/checkout@v3
+
       - name: Compute Names
         env:
           recipe: ${{ matrix.recipe }}
@@ -168,9 +171,6 @@ jobs:
           ./mconfig -p /usr/local && \
           make -C builddir && \
           sudo make -C builddir install
-
-      - name: Check out code for the container build
-        uses: actions/checkout@v3
 
       - name: Build Container
         env:
