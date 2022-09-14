@@ -22,16 +22,14 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
-      - name: Print files
-        run: echo "${{ steps.ff.outputs.files }}"
-      - name: Find recipe files 2
-        id: ff2
+      - name: Find recipe files
+        id: ff
         uses: DovnarAlexander/github-action-file-detection@master
         with:
           wildcard: '*Singularity*'
           exit_code_found: 0
-      - name: Print files 2
-        run: echo "${{ steps.ff2.outputs.found }}"
+      - name: Print files
+        run: echo "${{ steps.ff.outputs.found }}"
 
   changes:
     name: "Changed Singularity Recipes"
@@ -45,4 +43,18 @@ jobs:
           format: 'json'
       - name: Print files
         run: echo "${{ steps.files.outputs.added_modified }}"
+      - name: create-json
+        id: create-json
+        uses: jsdaniell/create-json@1.1.2
+        with:
+          name: "repo_files_modified.json"
+          json: ${{ steps.files.outputs.added_modified }}
+      - name: Keep only singularity recipes
+        uses: sergeysova/jq-action@v2
+        id: filter
+        with:
+          cmd: 'jq \'.[] | select(test("Singularity"))\' repo_files_modified.json'
+          multiline: true
+      - name: Print rules
+        run: echo "${{ steps.filter.outputs.value }}"
   
