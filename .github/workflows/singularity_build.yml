@@ -28,7 +28,7 @@ jobs:
           echo "::set-output name=files::$(
             find . -name "*Singularity*" |
             xargs -d \\n printf \"%s\", |
-            sed -e 's/^/[/' -e 's/,$/]\\n/'
+            sed -e 's/^/[/' -e 's/,$/]/'
           )"
       - name: Print files
         run: echo "${{ steps.ff.outputs.files }}"
@@ -53,6 +53,6 @@ jobs:
           script: '[.[] | select(test("Singularity"))]'
       - name: Print rules
         run: |
-          echo "${{ steps.filter.outputs.value }}" | \
+          echo "${{ steps.filter.outputs.output }}" | \
             xargs -d \n printf %s, | sed -e 's/^/[/' -e 's/,$/]\n/'
   
