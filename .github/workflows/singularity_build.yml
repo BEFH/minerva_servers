@@ -88,6 +88,54 @@ jobs:
 
     name: Build ${{ matrix.recipe }}
     steps:
+      - name: Compute Names
+        env:
+          recipe: ${{ matrix.recipe }}
+        run: |
+         if [ -f "${{ matrix.recipe }}" ]; then
+            # Remove leading ./
+            recipe_trimmed=${recipe#\.\/}
+            # Match container name
+            if [[ $recipe_trimmed =~ ^Singularity\.[^./\s]+$ ]]; then
+              # Singularity.name
+              containername=${recipe_trimmed#Singularity\.}
+            elif [[ $recipe_trimmed =~ ^[^./\s]+/Singularity$ ]]; then
+              # name/singularity
+              containername=${recipe_trimmed%\/Singularity}
+              # If the directory is "Singularity" or "singularity", use repo
+              if [[ $containername =~ ^[Ss]ingularity$ ]]; then
+                containername=${{ github.event.repository.name }}
+              fi
+            elif [[ $recipe_trimmed == "Singularity" ]]; then
+              # Singularity
+              containername=${{ github.event.repository.name }}
+            else
+              echo ERROR: Cannot determine container name from $recipe_trimmed
+              exit 1
+            fi
+            # Build the container and name by tag
+            echo "Container name is $containername."
+            echo "containername=$containername" >> $GITHUB_ENV
+         else
+           echo "${{ matrix.recipe }} is not found."
+           echo "Present working directory: $PWD"
+           ls
+         fi
+         if ${{ github.event_name == 'release' &&
+                github.event.action == 'created' }}; then
+           echo "tag=${{ github.ref }}" >> $GITHUB_ENV
+           echo "reponame=${{ github.event.repository.name }}" >> $GITHUB_ENV
+         else
+           echo "tag=${{ github.sha }}" >> $GITHUB_ENV
+           echo "reponame=${{ github.event.repository.name }}_dev" >> $GITHUB_ENV
+         fi
+         echo "Tag name is $tag."
+         echo "Repo name is $reponame."
+         owner=$(echo ${{ github.repository_owner }} |
+                 tr '[:upper:]' '[:lower:]')
+         echo "Owner is $owner."
+         echo "owner=$owner" >> $GITHUB_ENV
+
       - name: Install Dependencies
         run: |
           sudo apt-get update && sudo apt-get install -y \
@@ -127,29 +175,7 @@ jobs:
       - name: Build Container
         env:
           recipe: ${{ matrix.recipe }}
-        run: |
-         if [ -f "${{ matrix.recipe }}" ]; then
-            sudo -E singularity build container.sif ${{ matrix.recipe }}
-            containername=$(echo "${recipe/Singularity\./}")
-            if [ "$containername" == "Singularity" ]; then
-                containername=${{ github.event.repository.name }}
-            fi
-            # Build the container and name by tag
-            echo "Container Name is $containername."
-            echo "containername=$containername" >> $GITHUB_ENV
-         else
-           echo "${{ matrix.recipe }} is not found."
-           echo "Present working directory: $PWD"
-           ls
-         fi
-         if ${{ github.event_name == 'release' &&
-                github.event.action == 'created' }}; then
-           echo "tag=${{ github.ref }}" >> $GITHUB_ENV
-           echo "reponame=${{ github.event.repository.name }}" >> $GITHUB_ENV
-         else
-           echo "tag=${{ github.sha }}" >> $GITHUB_ENV
-           echo "reponame=${{ github.event.repository.name }}_dev" >> $GITHUB_ENV
-         fi
+        run: sudo -E singularity build container.sif ${{ matrix.recipe }}
 
       - name: Install GPG Key
         id: gpgkey
@@ -180,4 +206,5 @@ jobs:
         run: |
             echo ${{ secrets.SINGULARITY_KEY }} > /tmp/s.key
             singularity remote login --tokenfile /tmp/s.key SylabsCloud
-            singularity push -U container.sif library://befh/${reponame}/${containername}:${tag}
+            singularity push -U container.sif \
+              library://${owner}/${reponame}/${containername}:${tag}
