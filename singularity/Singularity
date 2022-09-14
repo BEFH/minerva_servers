@@ -55,3 +55,4 @@ From: rocker/rstudio:4.2
 %runscript
     echo "starting RStudio Server" && \
       exec rserver "${@}"
+

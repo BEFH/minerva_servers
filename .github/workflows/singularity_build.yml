@@ -99,10 +99,10 @@ jobs:
             # Remove leading ./
             recipe_trimmed=${recipe#\.\/}
             # Match container name
-            if [[ $recipe_trimmed =~ ^Singularity\.[^./\s]+$ ]]; then
+            if [[ $recipe_trimmed =~ ^Singularity\.[^./[:space:]]+$ ]]; then
               # Singularity.name
               containername=${recipe_trimmed#Singularity\.}
-            elif [[ $recipe_trimmed =~ ^[^./\s]+/Singularity$ ]]; then
+            elif [[ $recipe_trimmed =~ ^[^./[:space:]]+/Singularity$ ]]; then
               # name/singularity
               containername=${recipe_trimmed%\/Singularity}
               # If the directory is "Singularity" or "singularity", use repo
