@@ -79,7 +79,7 @@ jobs:
   build-test-containers:
     needs:
       - select_filelist
-    if: ${{ needs.select_filelist.outputs.recipes }} != '[]' }}
+    if: ${{ needs.select_filelist.outputs.recipes != '[]' }}
     runs-on: ubuntu-latest
     strategy:
       # Keep going on other deployments if anything bloops
