@@ -124,16 +124,17 @@ jobs:
            echo "Present working directory: $PWD"
            ls
          fi
-         if ${{ github.event_name == 'release' &&
-                github.event.action == 'created' }}; then
-           echo "tag=${{ github.ref }}" >> $GITHUB_ENV
-           echo "reponame=${{ github.event.repository.name }}" >> $GITHUB_ENV
+         if ${{ github.event_name == 'release' && github.event.action == 'created' }}; then
+           tag=${{ github.ref }}
+           reponame=${{ github.event.repository.name }}
          else
-           echo "tag=${{ github.sha }}" >> $GITHUB_ENV
-           echo "reponame=${{ github.event.repository.name }}_dev" >> $GITHUB_ENV
+           tag=${{ github.sha }}
+           reponame=${{ github.event.repository.name }}_dev
          fi
          echo "Tag name is $tag."
+         echo "tag=${{ github.ref }}" >> $GITHUB_ENV
          echo "Repo name is $reponame."
+         echo "reponame=$reponame" >> $GITHUB_ENV
          owner=$(echo ${{ github.repository_owner }} |
                  tr '[:upper:]' '[:lower:]')
          echo "Owner is $owner."
