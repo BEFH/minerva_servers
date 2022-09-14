@@ -50,10 +50,10 @@ jobs:
           name: "repo_files_modified.json"
           json: ${{ steps.files.outputs.added_modified }}
       - name: Keep only singularity recipes
-        uses: sergeysova/jq-action@v2
         id: filter
+        uses: sergeysova/jq-action@v2
         with:
-          cmd: 'jq \'.[] | select(test("Singularity"))\' repo_files_modified.json'
+          cmd: jq '.[] | select(test("Singularity"))' repo_files_modified.json
           multiline: true
       - name: Print rules
         run: echo "${{ steps.filter.outputs.value }}"
