@@ -437,7 +437,7 @@ fi
 if [[ $RS_IMAGE == "default" ]]; then
   RS_IMAGE="/sc/arion/work/${S_USERNAME}/rstudio_latest.sif"
   if ! ssh $S_HOSTNAME "test -e \"$RS_IMAGE\""; then
-    image_url="library://befh/rstudio/rstudio-server-conda:latest"
+    image_url="library://befh/rstudio/rstudio-server:latest"
     echoinfo "Pulling the default image $image_url"
     echoinfo "Pulling image to $RS_IMAGE"
     ssh $S_HOSTNAME <<ENDSSH
