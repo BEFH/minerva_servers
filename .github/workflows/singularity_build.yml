@@ -37,7 +37,7 @@ jobs:
     name: "Changed Singularity Recipes"
     runs-on: ubuntu-latest
     outputs:
-      changed_file: ${{ steps.files.outputs.added_modified }}
+      changed_file: ${{ steps.format.outputs.files }}
     steps:
       - id: files
         uses: jitterbit/get-changed-files@b17fbb00bdc0c0f63fcf166580804b4d2cdc2a42
@@ -51,8 +51,13 @@ jobs:
         with:
           input: ${{ steps.files.outputs.added_modified }}
           script: '[.[] | select(test("Singularity"))]'
-      - name: Print rules
+      - name: Format recipes
+        id: format
         run: |
-          echo '${{ steps.filter.outputs.output }}' | \
-            xargs -d \n printf %s, | sed -e 's/^/[/' -e 's/,$/]\n/'
+          remove_newlines() {
+            tr -d "\n" <<< '${{ steps.filter.outputs.output }}'
+          }
+          echo "::set-output name=files::"$(remove_newlines)
+      - name: Print
+        run: echo ${{ steps.format.outputs.files }}
   
