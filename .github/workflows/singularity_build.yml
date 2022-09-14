@@ -30,8 +30,6 @@ jobs:
             xargs -d \\n printf \"%s\", |
             sed -e 's/^/[/' -e 's/,$/]/'
           )"
-      - name: Print files
-        run: echo "${{ steps.ff.outputs.files }}"
 
   changes:
     name: "Changed Singularity Recipes"
@@ -44,8 +42,6 @@ jobs:
         uses: jitterbit/get-changed-files@b17fbb00bdc0c0f63fcf166580804b4d2cdc2a42
         with:
           format: 'json'
-      - name: Print files
-        run: echo "${{ steps.files.outputs.added_modified }}"
       - name: Keep only singularity recipes
         id: filter
         uses: edwardgeorge/jq-action@main
@@ -57,11 +53,9 @@ jobs:
         run: |
           remove_newlines() {
             tr -d "\n" <<< '${{ steps.filter.outputs.output }}' | \
-              sed 's/^\[ /[/'
+              sed 's/^\[ "/["/'
           }
           echo "::set-output name=files::"$(remove_newlines)
-      - name: Print
-        run: echo ${{ steps.format.outputs.files }}
   
   select_filelist:
     needs: [recipes, changes]
