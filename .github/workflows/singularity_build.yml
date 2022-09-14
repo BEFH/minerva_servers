@@ -53,6 +53,6 @@ jobs:
           script: '[.[] | select(test("Singularity"))]'
       - name: Print rules
         run: |
-          echo "${{ steps.filter.outputs.output }}" | \
+          echo '${{ steps.filter.outputs.output }}' | \
             xargs -d \n printf %s, | sed -e 's/^/[/' -e 's/,$/]\n/'
   
