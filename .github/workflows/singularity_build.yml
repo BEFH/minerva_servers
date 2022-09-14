@@ -108,8 +108,8 @@ jobs:
       - name: Install GPG Key
         id: gpgkey
         env:
-          passphrase: ${{ secrets.PASSPHRASE }}
-          gpgkey: ${{ secrets.GPGKEY }}
+          PASSPHRASE: ${{ secrets.PASSPHRASE }}
+          GPGKEY: ${{ secrets.GPGKEY }}
         if: |
             env.keepgoing == 'true' &&
             env.PASSPHRASE != '' &&
