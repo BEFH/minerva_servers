@@ -81,7 +81,7 @@ jobs:
       - select_filelist
     env:
       recipe_list: ${{ needs.select_filelist.outputs.recipes }}
-    if: env.recipe_list != '[]'
+    if: ${{ env.recipe_list != '[]' }}
     runs-on: ubuntu-latest
     strategy:
       # Keep going on other deployments if anything bloops
