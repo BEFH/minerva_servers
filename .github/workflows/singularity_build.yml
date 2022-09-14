@@ -33,7 +33,7 @@ jobs:
       - name: Print files
         run: echo "${{ steps.ff.outputs.files }}"
       - name: Find recipe files 2
-        id ff2
+        id: ff2
         uses: DovnarAlexander/github-action-file-detection@master
         with:
           wildcard: '*Singularity*'
