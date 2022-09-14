@@ -23,7 +23,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
       - name: Find recipe files
-        uses: jeertmans/filesfinder@v0.3
+        uses: jeertmans/filesfinder@v0.3.1-rc.2
         id: ff
         with:
           # Only argument, a single string, to be passed as arguments to ff.
