@@ -38,7 +38,7 @@ jobs:
     if: github.event_name != 'release'
     runs-on: ubuntu-latest
     outputs:
-      changed_file: ${{ steps.format.outputs.files }}
+      recipes: ${{ steps.format.outputs.files }}
     steps:
       - id: files
         uses: jitterbit/get-changed-files@b17fbb00bdc0c0f63fcf166580804b4d2cdc2a42
@@ -57,7 +57,7 @@ jobs:
         run: |
           remove_newlines() {
             tr -d "\n" <<< '${{ steps.filter.outputs.output }}' | \
-              sed 's/^\[ /['
+              sed 's/^\[ /[/'
           }
           echo "::set-output name=files::"$(remove_newlines)
       - name: Print
@@ -75,9 +75,9 @@ jobs:
         id: select
         run: |
           if ${{ github.event_name == 'release' }}; then
-            echo '::set-output name=files::${{ needs.recipes.outputs.changed_file }}'
+            echo '::set-output name=files::${{ needs.recipes.outputs.recipes }}'
           else
-            echo '::set-output name=files::${{ needs.changes.outputs.changed_file }}'
+            echo '::set-output name=files::${{ needs.changes.outputs.recipes }}'
           fi
       - name: Print
         run: echo ${{ steps.select.outputs.files }}
