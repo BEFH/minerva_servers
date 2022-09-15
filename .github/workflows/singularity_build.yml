@@ -132,7 +132,7 @@ jobs:
            reponame=${{ github.event.repository.name }}_dev
          fi
          echo "Tag name is $tag."
-         echo "tag=${{ github.ref }}" >> $GITHUB_ENV
+         echo "tag=$tag" >> $GITHUB_ENV
          echo "Repo name is $reponame."
          echo "reponame=$reponame" >> $GITHUB_ENV
          owner=$(echo ${{ github.repository_owner }} |
