@@ -11,10 +11,11 @@
 #                  : Andreas Lugmayr, Mike Boss                               #
 #  Date            : October 2021                                             #
 #  Location        : Mount Sinai (originally ETH Zurich)                      #
-#  Version         : 0.6.1                                                    #
+#  Version         : 0.6.2                                                    #
 #  Change history  :                                                          #
 #                                                                             #
-#  13.09.2022    Fix conda env and isolated operation                         #
+#  23.09.2022    Internet on Minerva. Remove for other clusters               #
+#  23.09.2022    Fix conda env and isolated operation                         #
 #                specify img, speed, verbosity, print password                #
 #  13.09.2022    Isolation working, validate successful startup,              #
 #                specify img, speed, verbosity, print password                #
@@ -45,7 +46,7 @@
 ###############################################################################
 
 # Version
-S_VERSION="0.6.1"
+S_VERSION="0.6.2"
 
 # Script directory
 # old RS_SCRIPTDIR=$(pwd)
@@ -676,6 +677,10 @@ ssh $S_HOSTNAME "cat > $S_FILE_BASHPROF" <<<cat <<EOF
   . /opt/conda/etc/profile.d/conda.sh && \
   . /opt/conda/etc/profile.d/mamba.sh && \
   mamba activate $RS_CONDAENV
+  export http_proxy=http://172.28.7.1:3128
+  export https_proxy=http://172.28.7.1:3128
+  export all_proxy=http://172.28.7.1:3128
+  export no_proxy=localhost,*.chimera.hpc.mssm.edu,172.28.0.0/16
 EOF
 
 echoinfo "Building LSF jobscript"
