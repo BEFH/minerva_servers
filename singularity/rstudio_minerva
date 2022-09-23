@@ -11,9 +11,11 @@
 #                  : Andreas Lugmayr, Mike Boss                               #
 #  Date            : October 2021                                             #
 #  Location        : Mount Sinai (originally ETH Zurich)                      #
-#  Version         : 0.6                                                      #
+#  Version         : 0.6.1                                                    #
 #  Change history  :                                                          #
 #                                                                             #
+#  13.09.2022    Fix conda env and isolated operation                         #
+#                specify img, speed, verbosity, print password                #
 #  13.09.2022    Isolation working, validate successful startup,              #
 #                specify img, speed, verbosity, print password                #
 #  08.09.2022    fix authentication, non-working isolated environments,       #
@@ -43,7 +45,7 @@
 ###############################################################################
 
 # Version
-S_VERSION="0.6"
+S_VERSION="0.6.1"
 
 # Script directory
 # old RS_SCRIPTDIR=$(pwd)
@@ -231,7 +233,7 @@ while [[ $# -gt 0 ]]; do
     ;;
     --isolated)
     S_ISOLATED=1
-    shift; shift
+    shift
     ;;
     -R|--resource)
     S_RESOURCE=$2
@@ -651,7 +653,7 @@ elif [[ $RS_CONDAENV =~ "/" ]]; then
   RS_PREFIX=$RS_CONDAENV
 else
   RS_PREFIX=$(ssh $S_HOSTNAME "conda info --envs" |
-              awk -v env=$RS_CONDAENV '\$1 == env {print \$2}')
+              awk -v env=$RS_CONDAENV '$1 == env {print $2}')
 fi
 
 echoinfo "Using environment $RS_CONDAENV at $RS_PREFIX"
