@@ -11,9 +11,10 @@
 #                  : Andreas Lugmayr, Mike Boss                               #
 #  Date            : October 2021                                             #
 #  Location        : Mount Sinai (originally ETH Zurich)                      #
-#  Version         : 0.6.2                                                    #
+#  Version         : 0.6.3                                                    #
 #  Change history  :                                                          #
 #                                                                             #
+#  29.09.2022    Allow differnt hostnames on different clients                #
 #  23.09.2022    Internet on Minerva. Remove for other clusters               #
 #  23.09.2022    Fix conda env and isolated operation                         #
 #                specify img, speed, verbosity, print password                #
@@ -46,7 +47,7 @@
 ###############################################################################
 
 # Version
-S_VERSION="0.6.2"
+S_VERSION="0.6.3"
 
 # Script directory
 # old RS_SCRIPTDIR=$(pwd)
@@ -494,9 +495,13 @@ if [ -f $S_RCI ]; then
     echo
     cat $S_RCI
     echo
-    RC_SSH=$(sed -nE 's/^SSH[a-zA-Z ]+: (.+)/\1/p' $S_RCI)
+
+    RC_PRT_REMOTE=$(sed -nE 's/^Remote port +: (.+)/\1/p' $S_RCI)
+    RC_IP_REMOTE=$(sed -nE 's/^Remote IP address +: (.+)/\1/p' $S_RCI)
     RC_URL=$(sed -nE 's/^URL[a-zA-Z ]+: (.+)/\1/p' $S_RCI)
     RC_PRT=$(sed -nE 's/^Local[a-zA-Z ]+: (.+)/\1/p' $S_RCI)
+    #RC_SSH=$(sed -nE 's/^SSH[a-zA-Z ]+: (.+)/\1/p' $S_RCI)
+    RC_SSH="ssh $S_HOSTNAME -L $RC_PRT:$RC_IP_REMOTE:$RC_PRT_REMOTE -fNT"
 
     echoinfo "Starting browser and connecting it to the server"
     echoinfo "Connecting to url $RC_URL"
