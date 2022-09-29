@@ -986,7 +986,7 @@ $S_FWDCMD
 # it is established before starting the browser
 sleep 3
 
-S_PASSWORD=$(ssh chimera "cat $S_FILE_PASSWORD" | 
+S_PASSWORD=$(ssh $S_HOSTNAME "cat $S_FILE_PASSWORD" | 
              awk -F "=" '$1 == "export PASSWORD" {print $2}')
 
 # print information about IP, ports and token
