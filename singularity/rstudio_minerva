@@ -461,7 +461,12 @@ fi
 # check for reconnect_info in the current directory on the local computer
 
 macos_open () {
-  native_app="$HOME/.minerva_rstudio_app/RStudio_minerva${S_SESSION}_$1-darwin-x64/RStudio_minerva${S_SESSION}_$1.app"
+  if [[ $(uname -m) == "x86_64" ]]; then
+    plat=x64
+  else
+    plat=arm64
+  fi
+  native_app="$HOME/.minerva_rstudio_app/RStudio_minerva${S_SESSION}_$1-darwin-$plat/RStudio_minerva${S_SESSION}_$1.app"
   if [[ -d $native_app ]]; then
     echoinfo "Opening in native mode"
     open -n $native_app
