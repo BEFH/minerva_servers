@@ -11,9 +11,10 @@
 #                  : Andreas Lugmayr, Mike Boss                               #
 #  Date            : October 2021                                             #
 #  Location        : Mount Sinai (originally ETH Zurich)                      #
-#  Version         : 0.6.3                                                    #
+#  Version         : 0.6.4                                                    #
 #  Change history  :                                                          #
 #                                                                             #
+#  03.10.2022    Native client compatibility with Apple Silicon               #
 #  29.09.2022    Allow differnt hostnames on different clients                #
 #  23.09.2022    Internet on Minerva. Remove for other clusters               #
 #  23.09.2022    Fix conda env and isolated operation                         #
@@ -47,7 +48,7 @@
 ###############################################################################
 
 # Version
-S_VERSION="0.6.3"
+S_VERSION="0.6.4"
 
 # Script directory
 # old RS_SCRIPTDIR=$(pwd)
@@ -432,7 +433,15 @@ fi
 if ! ssh $S_HOSTNAME "test -e \"$RS_WORKDIR/rsession.conf\""; then
   ssh $S_HOSTNAME "cat > $RS_WORKDIR/rsession.conf" <<<cat <<EOF
 # add your configuration here
+session-timeout-minutes=9000
+EOF
+fi
 
+if ! ssh $S_HOSTNAME "test -e \"$RS_WORKDIR/rserver.conf\""; then
+  ssh $S_HOSTNAME "cat > $RS_WORKDIR/rserver.conf" <<<cat <<EOF
+# add your configuration here
+auth-timeout-minutes=0
+auth-stay-signed-in-days=30
 EOF
 fi
 
@@ -777,6 +786,7 @@ singularity run \\
   --bind /sys/fs/cgroup/:/sys/fs/cgroup/:ro \\
   --bind $RS_WORKDIR/database.conf:/etc/rstudio/database.conf \\
   --bind $RS_WORKDIR/rsession.conf:/etc/rstudio/rsession.conf \\
+  --bind $RS_WORKDIR/rserver.conf:/etc/rstudio/rserver.conf \\
   --bind ${RS_PREFIX}:${RS_PREFIX} \\
   --bind $S_FILE_LOGCONF:/etc/rstudio/logging.conf \\
   --bind /hpc/packages \\
