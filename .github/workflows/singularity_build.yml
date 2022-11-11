@@ -30,7 +30,7 @@ jobs:
       - name: Dump matrix context
         run: echo '${{ toJSON(matrix) }}'
       - name: test select_filelist
-        run: echo '${{ needs.changes.result == "success" || github.event_name == "release" }}'
+        run: echo ${{ needs.changes.result == 'success' || github.event_name == 'release' }}
 
   recipes:
     name: "Find Singularity recipes"
