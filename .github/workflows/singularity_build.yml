@@ -59,7 +59,7 @@ jobs:
           echo "::set-output name=files::"$(remove_newlines)
 
   dump_contexts_to_log:
-    needs: recipes
+    needs: changes
     runs-on: ubuntu-latest
     steps:
       - name: Dump GitHub context
