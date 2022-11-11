@@ -146,7 +146,7 @@ jobs:
            ls
          fi
          if ${{ github.event_name == 'release' && github.event.action == 'created' }}; then
-           tag=${{ github.tag_name }}
+           tag=${{ github.ref_name }}
            reponame=${{ github.event.repository.name }}
          else
            tag=${{ github.sha }}
