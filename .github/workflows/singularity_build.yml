@@ -56,7 +56,7 @@ jobs:
             tr -d "\n" <<< '${{ steps.filter.outputs.output }}' | \
               sed 's/^\[ "/["/'
           }
-          echo "::set-output name=files::"$(remove_newlines)
+          echo "files=$(remove_newlines)" >> $GITHUB_OUTPUT
 
   dump_contexts_to_log:
     needs: changes
@@ -90,9 +90,9 @@ jobs:
         id: select
         run: |
           if ${{ github.event_name == 'release' }}; then
-            echo '::set-output name=files::${{ needs.recipes.outputs.recipes }}'
+            echo 'files=${{ needs.recipes.outputs.recipes }}' >> $GITHUB_OUTPUT
           else
-            echo '::set-output name=files::${{ needs.changes.outputs.recipes }}'
+            echo 'files=${{ needs.changes.outputs.recipes }}' >> $GITHUB_OUTPUT
           fi
       - name: Print
         run: echo ${{ steps.select.outputs.files }}
