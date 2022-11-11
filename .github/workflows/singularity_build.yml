@@ -29,6 +29,8 @@ jobs:
         run: echo '${{ toJSON(strategy) }}'
       - name: Dump matrix context
         run: echo '${{ toJSON(matrix) }}'
+      - name: test select_filelist
+        run: echo '${{ needs.changes.result == "success" || github.event_name == "release" }}'
 
   recipes:
     name: "Find Singularity recipes"
@@ -77,8 +79,7 @@ jobs:
   
   select_filelist:
     needs: [recipes, changes]
-    if: ${{ needs.changes.result == 'success' ||
-            github.event_name == 'release' }}
+    if: ${{ needs.changes.result == 'success' || github.event_name == 'release' }}
     runs-on: ubuntu-latest
     outputs:
       recipes: ${{ steps.select.outputs.files }}
