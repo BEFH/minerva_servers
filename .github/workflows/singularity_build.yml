@@ -30,7 +30,7 @@ jobs:
             sed -e 's/^/[/' -e 's/,$/]/'
           )"
           echo $flist
-          echo "{name}={$flist}" >> $GITHUB_OUTPUT
+          echo "{files}={$flist}" >> $GITHUB_OUTPUT
 
   changes:
     name: "Changed Singularity Recipes"
