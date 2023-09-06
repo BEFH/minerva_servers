@@ -988,9 +988,9 @@ find_port() {
 }
 
 if ! [ -z ${S_SESSION+x} ]; then
-  S_LOCAL_PORT=$(find_port 8890)
+  S_LOCAL_PORT=$(find_port 8990)
 else
-  S_LOCAL_PORT=$(find_port 8899)
+  S_LOCAL_PORT=$(find_port 8999)
 fi
 
 S_FWDCMD="ssh $S_HOSTNAME -L $S_LOCAL_PORT:$S_REMOTE_IP:$S_REMOTE_PORT -fNT"
