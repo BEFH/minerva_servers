@@ -168,9 +168,21 @@ jobs:
             libssl-dev \
             uuid-dev \
             libgpgme11-dev \
-            squashfs-tools \
+            autoconf \
+            automake \
+            cryptsetup \
+            fuse2fs \
+            fuse \
+            libfuse-dev \
+            libglib2.0-dev \
             libseccomp-dev \
-            pkg-config
+            libtool \
+            pkg-config \
+            runc \
+            squashfs-tools \
+            squashfs-tools-ng \
+            uidmap \
+            zlib1g-dev
 
       - name: Set up Go 1.22
         uses: actions/setup-go@v5
