@@ -3,9 +3,13 @@ From: rocker/rstudio:4.3
 
 %post
     apt-get update && \
-    apt-get install -y wget lua5.3 lua-bit32 lua-posix lua-posix-dev \
+    apt-get install -y wget lua-posix lua-posix-dev \
       tcl tcl-dev tcl8.6 tcl8.6-dev libtcl8.6 \
-      lua5.1 liblua5.1-0-dev liblua5.1-0 && \
+      lua5.1 liblua5.1-0-dev liblua5.1-0 && \ 
+    ln -s /usr/lib/x86_64-linux-gnu/lua/5.1/posix.so \
+      /usr/lib/x86_64-linux-gnu/lua/5.1/posix.so && \
+    ln -s /usr/lib/x86_64-linux-gnu/lua/5.1/bit32.so \
+      /usr/lib/x86_64-linux-gnu/lua/5.1/bit32.so && \
     apt-get clean
     # wget https://github.com/TACC/Lmod/archive/refs/tags/8.7.12.tar.gz && \
     # tar xf 8.7.12.tar.gz && \
