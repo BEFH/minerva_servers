@@ -4,7 +4,8 @@ From: rocker/rstudio:4.3
 %post
     apt-get update && \
     apt-get install -y wget lua5.3 lua-bit32 lua-posix lua-posix-dev \
-      liblua5.3-0 liblua5.3-dev tcl tcl-dev tcl8.6 tcl8.6-dev libtcl8.6 && \
+      tcl tcl-dev tcl8.6 tcl8.6-dev libtcl8.6 \
+      lua5.1 liblua5.1-0-dev liblua5.1-0 && \
     apt-get clean
     # wget https://github.com/TACC/Lmod/archive/refs/tags/8.7.12.tar.gz && \
     # tar xf 8.7.12.tar.gz && \
@@ -34,9 +35,7 @@ From: rocker/rstudio:4.3
     echo "enabling conda" && \
       . /opt/conda/etc/profile.d/conda.sh && \
       . /opt/conda/etc/profile.d/mamba.sh && \
-      . /etc/profile.d/00-modulepath.sh && \
       . /etc/profile.d/lsf.sh && \
-      . /etc/profile.d/modules.sh && \
       . /etc/profile.d/z00_lmod.sh && \
       alias ll='ls -l' && \
       echo "activating env $RS_CONDAENV" && \
@@ -48,9 +47,7 @@ From: rocker/rstudio:4.3
     echo "enabling conda" && \
       . /opt/conda/etc/profile.d/conda.sh && \
       . /opt/conda/etc/profile.d/mamba.sh && \
-      . /etc/profile.d/00-modulepath.sh && \
       . /etc/profile.d/lsf.sh && \
-      . /etc/profile.d/modules.sh && \
       . /etc/profile.d/z00_lmod.sh && \
       alias ll='ls -l' && \
       echo "activating env $RS_CONDAENV" && \
@@ -62,9 +59,7 @@ From: rocker/rstudio:4.3
     echo "enabling conda" && \
       . /opt/conda/etc/profile.d/conda.sh && \
       . /opt/conda/etc/profile.d/mamba.sh && \
-      . /etc/profile.d/00-modulepath.sh && \
       . /etc/profile.d/lsf.sh && \
-      . /etc/profile.d/modules.sh && \
       . /etc/profile.d/z00_lmod.sh && \
       echo "activating env $RS_CONDAENV" && \
       conda activate $RS_CONDAENV && \
