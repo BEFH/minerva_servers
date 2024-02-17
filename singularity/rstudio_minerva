@@ -697,6 +697,12 @@ EOF
 ssh $S_HOSTNAME "cat > $S_FILE_BASHPROF" <<<cat <<EOF
   . /opt/conda/etc/profile.d/conda.sh && \
   . /opt/conda/etc/profile.d/mamba.sh && \
+  . /etc/profile.d/00-modulepath.sh && \
+  . /etc/profile.d/lsf.sh && \
+  . /etc/profile.d/modules.sh && \
+  . /etc/profile.d/z00_lmod.sh && \
+  alias ll='ls -l' && \
+  echo "Activated $RS_CONDAENV"
   mamba activate $RS_CONDAENV
   export http_proxy=http://172.28.7.1:3128
   export https_proxy=http://172.28.7.1:3128
@@ -795,6 +801,18 @@ singularity run \\
   --bind $RS_TMP/run:/serverdir \\
   --bind $S_DIR_LOGCONF:/rstudio_logs \\
   --bind $RS_TMP/tmp:/tmp/rstudio-server \\
+  --bind /opt/hpc:/opt/hpc:ro \\
+  --bind /etc/profile.d/00-modulepath.sh:/etc/profile.d/00-modulepath.sh \\
+  --bind /etc/profile.d/00-modulepath.csh:/etc/profile.d/00-modulepath.csh \\
+  --bind /etc/profile.d/lsf.sh:/etc/profile.d/lsf.sh \\
+  --bind /etc/profile.d/lsf.csh:/etc/profile.d/lsf.csh \\
+  --bind /etc/profile.d/modules.sh:/etc/profile.d/modules.sh \\
+  --bind /etc/profile.d/modules.csh:/etc/profile.d/modules.csh \\
+  --bind /etc/profile.d/mpi-selector.sh:/etc/profile.d/mpi-selector.sh \\
+  --bind /etc/profile.d/z00_lmod.sh:/etc/profile.d/z00_lmod.sh \\
+  --bind /usr/share/lmod/:/usr/share/lmod/:ro \\
+  --bind /usr/share/Modules/:/usr/share/Modules/:ro \\
+  --bind /hpc/lsf:/hpc/lsf:ro \\
   --app rserver \\
   --env PASSWORD=\$PASSWORD \\
   --env RS_CONDAENV=$RS_CONDAENV \\
