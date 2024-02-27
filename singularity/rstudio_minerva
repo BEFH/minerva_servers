@@ -694,13 +694,14 @@ delete-days=10
 warn-syslog=0
 EOF
 
+#  . /etc/profile.d/modules.sh && \
+#  . /etc/profile.d/z00_lmod.sh && \
+#  . /etc/profile.d/00-modulepath.sh && \
+
 ssh $S_HOSTNAME "cat > $S_FILE_BASHPROF" <<<cat <<EOF
   . /opt/conda/etc/profile.d/conda.sh && \
   . /opt/conda/etc/profile.d/mamba.sh && \
-  . /etc/profile.d/00-modulepath.sh && \
   . /etc/profile.d/lsf.sh && \
-  . /etc/profile.d/modules.sh && \
-  . /etc/profile.d/z00_lmod.sh && \
   alias ll='ls -l' && \
   echo "Activated $RS_CONDAENV"
   mamba activate $RS_CONDAENV
