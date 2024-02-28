@@ -159,48 +159,10 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          sudo apt-get update && sudo apt-get install -y \
-            build-essential \
-            libssl-dev \
-            uuid-dev \
-            libgpgme11-dev \
-            autoconf \
-            automake \
-            cryptsetup \
-            fuse2fs \
-            fuse \
-            libfuse-dev \
-            libglib2.0-dev \
-            libseccomp-dev \
-            libtool \
-            pkg-config \
-            runc \
-            squashfs-tools \
-            squashfs-tools-ng \
-            uidmap \
-            zlib1g-dev
-
-      - name: Set up Go 1.22
-        uses: actions/setup-go@v5
-        with:
-          go-version: 1.22
-        id: go
-
-      - name: Install Singularity
-        env:
-          SINGULARITY_VERSION: 4.1.1
-          GOPATH: /tmp/go
-        run: |
-          mkdir -p $GOPATH
-          sudo mkdir -p /usr/local/var/singularity/mnt && \
-          mkdir -p $GOPATH/src/github.com/sylabs && \
-          cd $GOPATH/src/github.com/sylabs && \
-          wget -qO- https://github.com/sylabs/singularity/releases/download/v${SINGULARITY_VERSION}/singularity-ce-${SINGULARITY_VERSION}.tar.gz | \
-          tar xzv && \
-          cd singularity-ce-${SINGULARITY_VERSION} && \
-          ./mconfig -p /usr/local && \
-          make -C builddir && \
-          sudo make -C builddir install
+          sudo apt-get update && \
+          sudo apt-get install -y software-properties-common && \
+          sudo add-apt-repository -y ppa:apptainer/ppa &&
+          sudo apt-get install -y apptainer-suid
 
       - name: Build Container
         env:
