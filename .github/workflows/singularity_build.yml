@@ -169,7 +169,7 @@ jobs:
         env:
           recipe: ${{ matrix.recipe }}
         run: |
-            sudo -E singularity build container.sif ${{ matrix.recipe }}
+            sudo -E apptainer build container.sif ${{ matrix.recipe }}
             sudo chown $USER:$(id -gn $USER) container.sif
 
       - name: Install GPG Key
@@ -185,7 +185,7 @@ jobs:
             ##  Use perl -p -e 's/\n/&&&/' private.asc
             echo $GPGKEY | perl -p -e 's/&&&/\n/g' > private.asc
             sudo chown -R $USER:$(id -gn $USER) ~/.apptainer
-            singularity key import private.asc < <(echo $PASSPHRASE)
+            apptainer key import private.asc < <(echo $PASSPHRASE)
             rm private.asc
 
       - name: Sign Container
@@ -194,13 +194,15 @@ jobs:
             github.event_name != 'pull_request' &&
             steps.gpgkey.outcome == 'success'
         run: |
-            singularity sign container.sif < <(echo ${{ secrets.PASSPHRASE }})
+            apptainer sign container.sif < <(echo ${{ secrets.PASSPHRASE }})
 
       - name: Login and Deploy Container
         if: |
             github.event_name != 'pull_request'
         run: |
             echo ${{ secrets.SINGULARITY_KEY }} > /tmp/s.key
-            singularity remote login --tokenfile /tmp/s.key SylabsCloud
-            singularity push -U container.sif \
+            apptainer remote add --no-login SylabsCloud cloud.sycloud.io
+            apptainer remote login --tokenfile /tmp/s.key SylabsCloud
+            apptainer remote use SylabsCloud
+            apptainer push -U container.sif \
               library://${owner}/${reponame}/${containername}:${tag}
