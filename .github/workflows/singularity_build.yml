@@ -168,7 +168,9 @@ jobs:
       - name: Build Container
         env:
           recipe: ${{ matrix.recipe }}
-        run: sudo -E singularity build container.sif ${{ matrix.recipe }}
+        run: |
+            sudo -E singularity build container.sif ${{ matrix.recipe }}
+            sudo chown $USER:$(id -gn $USER) container.sif
 
       - name: Install GPG Key
         id: gpgkey
