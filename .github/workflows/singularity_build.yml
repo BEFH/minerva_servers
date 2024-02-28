@@ -40,22 +40,18 @@ jobs:
       recipes: ${{ steps.format.outputs.files }}
     steps:
       - id: files
-        uses: jitterbit/get-changed-files@b17fbb00bdc0c0f63fcf166580804b4d2cdc2a42
+        uses: Ana06/get-changed-files@v2.3.0
         with:
           format: 'json'
-      - name: Keep only singularity recipes
-        id: filter
-        uses: edwardgeorge/jq-action@main
-        with:
-          input: ${{ steps.files.outputs.added_modified }}
-          script: '[.[] | select(test("Singularity"))]'
+          filter: '*Singularity*'
       - name: Format recipes
         id: format
         run: |
           remove_newlines() {
-            tr -d "\n" <<< '${{ steps.filter.outputs.output }}' | \
+            tr -d "\n" <<< '${{ steps.files.outputs.added_modified }}' | \
               sed 's/^\[ "/["/'
           }
+          echo $(remove_newlines)
           echo "files=$(remove_newlines)" >> $GITHUB_OUTPUT
 
   dump_contexts_to_log:
