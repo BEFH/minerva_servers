@@ -40,7 +40,7 @@ From: rocker/rstudio:4.3
       /bin/bash
 
 %runscript
-    echo "enabling conda" && \
+    echo "Enabling conda" && \
       . /opt/conda/etc/profile.d/conda.sh && \
       . /opt/conda/etc/profile.d/mamba.sh && \
       . /etc/profile.d/lsf.sh && \
