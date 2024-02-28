@@ -5,30 +5,12 @@ From: rocker/rstudio:4.3
     apt-get update && \
     apt-get install -y wget lua-posix lua-posix-dev \
       tcl tcl-dev tcl8.6 tcl8.6-dev libtcl8.6 \
-      lua5.1 liblua5.1-0-dev liblua5.1-0 && \ 
-    ln -s /usr/lib/x86_64-linux-gnu/lua/5.1/posix.so \
-      /usr/lib/x86_64-linux-gnu/lua/5.1/posix.so && \
-    ln -s /usr/lib/x86_64-linux-gnu/lua/5.1/bit32.so \
-      /usr/lib/x86_64-linux-gnu/lua/5.1/bit32.so && \
+      lua5.1 liblua5.1-0-dev liblua5.1-0 && \
     apt-get clean
-    # wget https://github.com/TACC/Lmod/archive/refs/tags/8.7.12.tar.gz && \
-    # tar xf 8.7.12.tar.gz && \
-    # rm -f 8.7.12.tar.gz && \
-    # cd Lmod-8.7.12 && \
-    # ./configure --prefix=/opt/apps && \
-    # make install && \
-    # chmod a+rX /opt/apps && \
-    # cd .. && \
-    # rm -rf cd Lmod-8.7.12 && \
-    # mkdir -p /etc/fish/conf.d && \
-    # ln -s /opt/apps/lmod/lmod/init/profile  /etc/profile.d/z00_lmod.sh && \
-    # ln -s /opt/apps/lmod/lmod/init/cshrc  /etc/profile.d/z00_lmod.csh && \
-    # ln -s /opt/apps/lmod/lmod/init/profile.fish /etc/fish/conf.d/z00_lmod.fish
     echo "lock-type=linkbased" > /etc/rstudio/file-locks
-    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh
-    bash ~/miniconda.sh -b -p /opt/conda
-    . /opt/conda/etc/profile.d/conda.sh
-    conda install -c conda-forge -y mamba
+    wget -O Miniforge3.sh "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
+    bash ~/Miniforge3.sh -b -p /opt/conda
+    rm ~/Miniforge3.sh
     echo "done"
 
 %environment
@@ -40,7 +22,6 @@ From: rocker/rstudio:4.3
       . /opt/conda/etc/profile.d/conda.sh && \
       . /opt/conda/etc/profile.d/mamba.sh && \
       . /etc/profile.d/lsf.sh && \
-      . /etc/profile.d/z00_lmod.sh && \
       alias ll='ls -l' && \
       echo "activating env $RS_CONDAENV" && \
       conda activate $RS_CONDAENV && \
@@ -52,7 +33,6 @@ From: rocker/rstudio:4.3
       . /opt/conda/etc/profile.d/conda.sh && \
       . /opt/conda/etc/profile.d/mamba.sh && \
       . /etc/profile.d/lsf.sh && \
-      . /etc/profile.d/z00_lmod.sh && \
       alias ll='ls -l' && \
       echo "activating env $RS_CONDAENV" && \
       conda activate $RS_CONDAENV && \
@@ -64,7 +44,6 @@ From: rocker/rstudio:4.3
       . /opt/conda/etc/profile.d/conda.sh && \
       . /opt/conda/etc/profile.d/mamba.sh && \
       . /etc/profile.d/lsf.sh && \
-      . /etc/profile.d/z00_lmod.sh && \
       echo "activating env $RS_CONDAENV" && \
       conda activate $RS_CONDAENV && \
       echo "starting RStudio Server" && \
