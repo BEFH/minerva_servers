@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 ###############################################################################
 #                                                                             #
@@ -11,9 +11,15 @@
 #                  : Andreas Lugmayr, Mike Boss                               #
 #  Date            : October 2021                                             #
 #  Location        : Mount Sinai (originally ETH Zurich)                      #
-#  Version         : 0.7.1                                                    #
+#  Version         : 0.8.0                                                    #
 #  Change history  :                                                          #
 #                                                                             #
+#  20.03.2024    Remove attempts at lsf and lmod; allow breaking out of       #
+#                sandbox onto Minerva by typing "minerva" in the terminal     #
+#                optionally followed by bsub arguments; allow running on      #
+#                cluster as well as locally; improve speed and robustness;    #
+#                add --debug mode; guess himem and lsf partition;             #
+#                Guess LSF account better; allow multiple LSF resources       #
 #  17.11.2022    include session name in lsf lognames and allow long jobs     #
 #  03.10.2022    Native client compatibility with Apple Silicon               #
 #  29.09.2022    Allow differnt hostnames on different clients                #
@@ -49,21 +55,23 @@
 ###############################################################################
 
 # Version
-S_VERSION="0.7.1"
+S_VERSION="0.8.0"
 
 # Script directory
 # old RS_SCRIPTDIR=$(pwd)
 S_SCRIPTDIR=$HOME
 
 # hostname of the cluster to connect to
-if grep -q 'Host minerva[[:space:]]*$' $HOME/.ssh/config &> /dev/null; then
+if [ -d /hpc/users ]; then
+  S_HOSTNAME="minervarun"
+elif grep -q 'Host minerva[[:space:]]*$' $HOME/.ssh/config &> /dev/null; then
   S_HOSTNAME="minerva"
 elif grep -q 'Host chimera[[:space:]]*$' $HOME/.ssh/config &> /dev/null; then
   S_HOSTNAME="chimera"
 fi
 
 # Queue to use
-S_QUEUE="premium"
+S_QUEUE="auto"
 
 # LSF Account
 S_ACCT="acc_null"
@@ -100,24 +108,38 @@ RS_CONDAENV="null"
 # Default image                 : "default" means dl to /sc/arion/work/$USER/
 RS_IMAGE="default"
 
+# Debugging mode
+S_DEBUG=0
+
 ###############################################################################
 # Text coloring                                                               #
 ###############################################################################
 
 echoinfo () {
+  # Green
   echo -e "\033[32m[INFO] $@\033[0m"
 }
 
 echoerror () {
+  # Red
   echo -e "\033[31m[ERROR] $@\033[0m"
 }
 
 echoalert () {
+  # Blinking blue
   echo -e "\033[34;5m[INFO] $@\033[0m"
 }
 
 echowarn () {
+  # Blinking blue
   echo -e "\033[34;5m[WARNING] $@\033[0m"
+}
+
+echodebug () {
+  if [[ $S_DEBUG -eq 1 ]]; then
+    # Magenta
+    echo -e "\033[35m[DEBUG] $@\033[0m"
+  fi
 }
 
 ###############################################################################
@@ -138,7 +160,7 @@ Optional arguments:
 
   -n | --numcores   4                Number of CPU cores to be used on
                                       the cluster
-  -q | --queue      premium          queue to be used on the cluster
+  -q | --queue      guess            Queue to be used on the cluster
   -W | --runtime    12               Run time limit for the server in hours
                                       and minutes H[H[H]]:MM
   -m | --memory     4000             Memory limit in MB per core
@@ -156,8 +178,9 @@ Optional arguments:
   -C | --conda      shell default    Conda env for running rstudio
        --isolated                    Run RStudio server without home directory
                                       or environment variables
-  -I | --image      dload to work   Singularity image to use for the server.
+  -I | --image      dload to work    Singularity image to use for the server.
                                       Downloaded automatically if not specified.
+  --debug                            Print debug messages
 
 Examples:
 
@@ -193,6 +216,12 @@ exit 1
 ###############################################################################
 # Parse configuration options                                                 #
 ###############################################################################
+
+# Check that the BASH version is at least 5.0 and exit if not
+if [[ ${BASH_VERSION%%.*} -lt 5 ]]; then
+  echoerror "This script requires BASH version 5.0 or higher"
+  exit 1
+fi
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -240,7 +269,11 @@ while [[ $# -gt 0 ]]; do
     shift
     ;;
     -R|--resource)
-    S_RESOURCE=$2
+    if [[ $S_RESOURCE == "null" ]]; then
+      S_RESOURCE="$2"
+    else
+      S_RESOURCE+=" -R $2"
+    fi
     shift; shift
     ;;
     -S|--session)
@@ -254,6 +287,10 @@ while [[ $# -gt 0 ]]; do
     -I|--image)
     RS_IMAGE="$2"
     shift; shift
+    ;;
+    --debug)
+    S_DEBUG=1
+    shift
     ;;
     *)
     echowarn "ignoring unknown option $1 \n"
@@ -285,6 +322,8 @@ get_hostinfo() {
 if [ -z ${S_HOSTNAME+x} ]; then
   echoerror "Hostname is not set. Please specify with --server option.\n\n"
   display_help
+elif [[ "$S_HOSTNAME" == "minervarun" ]]; then
+  echoinfo "Running locally on Minerva\n\n"
 elif [[ "$S_HOSTNAME" =~ "@" ]]; then
   echoinfo "Valid username and server $S_HOSTNAME selected\n\n"
 elif ! [ -f $HOME/.ssh/config ]; then
@@ -306,8 +345,10 @@ else
 fi
 
 # Check if multiplexing is enabled, otherwise warn and compensate
-if ! [ -f $HOME/.ssh/config ] || \
-   ! grep -q "ControlPath" $HOME/.ssh/config &> /dev/null; then
+cm_enabled=$(! [ -f $HOME/.ssh/config ] ||
+             ! grep -q "ControlPath" $HOME/.ssh/config &> /dev/null ||
+             echo 1 || echo 0)
+if ! [[ "$S_HOSTNAME" == "minervarun" || cm_enabled -eq 1 ]]; then
   echoalert "You should enable ControlMaster in your .ssh/config.\n"
   echoalert "See https://en.wikibooks.org/wiki/OpenSSH/Cookbook/Multiplexing\n"
   if ! [ -d $HOME/.ssh/cm_socket ]; then
@@ -322,10 +363,15 @@ fi
 # Set up directories and files                                                #
 ###############################################################################
 
-echoinfo "Getting username and shell\n"
-S_REMOTE_SHELL=$(ssh $S_HOSTNAME 'echo "$SHELL"' | grep -Eo '[^/]+$')
-S_USERNAME=$(ssh $S_HOSTNAME 'echo "$USER"')
+if [[ "$S_HOSTNAME" == "minervarun" ]]; then
+  echoinfo "Running locally on Minerva"
+  S_USERNAME=$USER
+else
+  echoinfo "Connecting to $S_HOSTNAME"
+  S_USERNAME=$(ssh -n $S_HOSTNAME 'echo "$USER"')
+fi
 
+echoinfo "Setting up directories and files"
 RS_WORKDIR="/hpc/users/$S_USERNAME/minerva_jobs/rstudio"
 RS_TMP=/tmp/${S_USERNAME}${S_SESSION}_RStudio_1
 
@@ -345,34 +391,27 @@ S_DIR_CONFIG="/hpc/users/$S_USERNAME/.config/rstudio"
 
 echoinfo "Checking directories, files, image, and password"
 
-info_workdir=$(echoinfo "Creating working directory")
-info_logdir=$(echoinfo "Creating log directory")
-info_confdir=$(echoinfo "Creating config directory")
-
-ssh $S_HOSTNAME bash <<ENDSSH
-# check workdir
+S_CONTENTS_MKDIRS=$(cat <<EOF
 if [[ ! -d $RS_WORKDIR ]]; then
+  echo $(echoinfo "Creating working directory")
   mkdir -p $RS_WORKDIR
-  echo $info_workdir
 fi
-
-# check logdir
 if [[ ! -d $S_DIR_LOGCONF ]]; then
+  echo $(echoinfo "Creating log directory")
   mkdir -p $S_DIR_LOGCONF
-  echo $info_logdir
 fi
-
-# check confdir
 if [[ ! -d $S_DIR_CONFIG ]]; then
+  echo $(echoinfo "Creating config directory")
   mkdir -p $S_DIR_CONFIG
-  echo $info_confdir
 fi
+EOF
+)
 
-# check fakehome
-if [[ ! -d $RS_TMP/home ]]; then
-  mkdir -p $RS_TMP/home
+if [[ "$S_HOSTNAME" == "minervarun" ]]; then
+  eval "$S_CONTENTS_MKDIRS"
+else
+  ssh $S_HOSTNAME "bash -c '$S_CONTENTS_MKDIRS'"
 fi
-ENDSSH
 
 # Check for password
 create_rstudio_passwd_on_file () {
@@ -406,15 +445,26 @@ create_rstudio_passwd_on_file () {
   password=$password1
 
   # write to file
-  ssh $S_HOSTNAME "mkdir -p $(dirname $S_FILE_PASSWORD)"
-  ssh $S_HOSTNAME "cat > $S_FILE_PASSWORD" <<<cat <<EOF
+  if [[ "$S_HOSTNAME" == "minervarun" ]]; then
+    mkdir -p $(dirname $S_FILE_PASSWORD)
+    printf "# Password generated by rstudio_minerva\n" > $S_FILE_PASSWORD
+    printf "export PASSWORD=$password\n" >> $S_FILE_PASSWORD
+  else
+    ssh $S_HOSTNAME "mkdir -p $(dirname $S_FILE_PASSWORD)"
+    ssh $S_HOSTNAME "cat > $S_FILE_PASSWORD" <<<cat <<EOF
 # Password generated by rstudio_minerva"
 export PASSWORD=$password
 EOF
+  fi
 }
 
 check_set_runtime_password () {
-  if ! ssh $S_HOSTNAME "test -e \"$S_FILE_PASSWORD\""; then
+  if [[ "$S_HOSTNAME" == "minervarun" ]]; then
+    if ! test -e "$S_FILE_PASSWORD" ; then
+      echoinfo "$S_FILE_PASSWORD is not found, we need to create it."
+      create_rstudio_passwd_on_file
+    fi
+  elif ! ssh $S_HOSTNAME "test -e \"$S_FILE_PASSWORD\""; then
     echoinfo "$S_FILE_PASSWORD is not found, we need to create it."
     create_rstudio_passwd_on_file
   fi
@@ -424,44 +474,68 @@ check_set_runtime_password
 
 # Check rstudio config files
 
-if ! ssh $S_HOSTNAME "test -e \"$RS_WORKDIR/database.conf\""; then
-  ssh $S_HOSTNAME "cat > $RS_WORKDIR/database.conf" <<<cat <<EOF
-provider=sqlite
-directory=/var/lib/rstudio-server
-EOF
+S_CONTENTS_MKCONFS=$(cat <<EOF
+if ! test -e "$RS_WORKDIR/database.conf"; then
+  printf "provider=sqlite\n" > $RS_WORKDIR/database.conf
+  printf "directory=/var/lib/rstudio-server\n" >> $RS_WORKDIR/database.conf
 fi
-
-if ! ssh $S_HOSTNAME "test -e \"$RS_WORKDIR/rsession.conf\""; then
-  ssh $S_HOSTNAME "cat > $RS_WORKDIR/rsession.conf" <<<cat <<EOF
-# add your configuration here
-session-timeout-minutes=9000
-EOF
+if ! test -e "$RS_WORKDIR/rsession.conf"; then
+  printf "# add your configuration here\n" > $RS_WORKDIR/rsession.conf
+  printf "session-timeout-minutes=9000\n" >> $RS_WORKDIR/rsession.conf
 fi
-
-if ! ssh $S_HOSTNAME "test -e \"$RS_WORKDIR/rserver.conf\""; then
-  ssh $S_HOSTNAME "cat > $RS_WORKDIR/rserver.conf" <<<cat <<EOF
-# add your configuration here
-auth-timeout-minutes=0
-auth-stay-signed-in-days=30
+if ! test -e "$RS_WORKDIR/rserver.conf"; then
+  printf "# add your configuration here\n" > $RS_WORKDIR/rserver.conf
+  printf "auth-timeout-minutes=0\n" >> $RS_WORKDIR/rserver.conf
+  printf "auth-stay-signed-in-days=30\n" >> $RS_WORKDIR/rserver.conf
+fi
 EOF
+)
+
+if [[ "$S_HOSTNAME" == "minervarun" ]]; then
+  eval "$S_CONTENTS_MKCONFS"
+else
+  ssh $S_HOSTNAME "bash -c '$S_CONTENTS_MKCONFS'"
 fi
 
 # check image
 
+echoinfo "Checking for RStudio Server image"
+
+RS_IMAGE_DLDEFAULT=0
 if [[ $RS_IMAGE == "default" ]]; then
   RS_IMAGE="/sc/arion/work/${S_USERNAME}/rstudio_latest.sif"
-  if ! ssh $S_HOSTNAME "test -e \"$RS_IMAGE\""; then
-    image_url="library://befh/rstudio-server-conda/rstudio-server-conda:latest"
-    echoinfo "Pulling the default image $image_url"
-    echoinfo "Pulling image to $RS_IMAGE"
-    ssh $S_HOSTNAME bash -l <<ENDSSH
-   module load singularity/3.6.4
-   singularity pull --name $RS_IMAGE --arch amd64 $image_url
-ENDSSH
+  if [[ "$S_HOSTNAME" == "minervarun" ]]; then
+    if ! test -e "$RS_IMAGE"; then
+      RS_IMAGE_DLDEFAULT=1
+    fi
+  else
+    if ! ssh $S_HOSTNAME "test -e \"$RS_IMAGE\""; then
+      RS_IMAGE_DLDEFAULT=1
+    fi
+  fi
+elif [[ "$S_HOSTNAME" == "minervarun" ]]; then
+  if ! test -e "$RS_IMAGE"; then
+    echoerror "Specified image \"$RS_IMAGE\" does not exist"
+    exit 1
   fi
 elif ! ssh $S_HOSTNAME "test -e \"$RS_IMAGE\""; then
   echoerror "Specified image \"$RS_IMAGE\" does not exist"
   exit 1
+fi
+
+if [[ $RS_IMAGE_DLDEFAULT -eq 1 ]]; then
+  image_url="library://befh/rstudio-server-conda/rstudio-server-conda:latest"
+  echoinfo "Pulling the default image $image_url"
+  echoinfo "Pulling image to $RS_IMAGE"
+  if [[ "$S_HOSTNAME" == "minervarun" ]]; then
+    ml singularity/3.6.4
+    singularity pull --name $RS_IMAGE --arch amd64 $image_url
+  else
+    ssh $S_HOSTNAME bash -l <<ENDSSH
+      ml singularity/3.6.4
+      singularity pull --name $RS_IMAGE --arch amd64 $image_url
+ENDSSH
+  fi
 fi
 
 ###############################################################################
@@ -471,23 +545,7 @@ fi
 # check for reconnect_info in the current directory on the local computer
 
 macos_open () {
-  if [[ $(uname -m) == "x86_64" ]]; then
-    plat=x64
-  else
-    plat=arm64
-  fi
-  native_app="$HOME/.minerva_rstudio_app/RStudio_minerva${S_SESSION}_$1-darwin-$plat/RStudio_minerva${S_SESSION}_$1.app"
-  if [[ -d $native_app ]]; then
-    echoinfo "Opening in native mode"
-    open -n $native_app
-  elif which nativefier &> /dev/null; then
-    nativefier --quiet -n "RStudio_minerva${S_SESSION}_$1" \
-      --darwin-dark-mode-support --fast-quit --enable-es3-apis \
-      http://localhost:$1 $HOME/.minerva_rstudio_app 2> /dev/null
-    echoinfo "Opening in native mode"
-    sleep 2
-    open -n $native_app
-  elif open -n -a 'Google Chrome' --args "--app=http://localhost:$1" 2> /dev/null ; then
+  if open -n -a 'Google Chrome' --args "--app=http://localhost:$1" 2> /dev/null ; then
     echoinfo "Opened in Chromeless Google Chrome"
   else
     echoinfo "Opening in default browser"
@@ -495,9 +553,20 @@ macos_open () {
   fi
 }
 
+instructs_mrun() {
+  echoinfo "Choose an available port on your local computer and replace"
+  echoinfo "LOCAL_PORT in the following command with the chosen port:"
+  echoinfo "$S_FWDCMD"
+  echoinfo "Run that command in a terminal to establish the SSH tunnel."
+  echoinfo "Replace LOCAL_PORT in the following url with the chosen port:"
+  echoinfo "http://localhost:LOCAL_PORT"
+  echoinfo "Open the url in your browser and use the password to log in."
+  echoinfo "The password is $S_PASSWORD"
+}
+
 echoinfo "Checking if reconnection is possible\n"
 
-if [ -z ${S_MANUAL_MULTIPLEX+x} ]; then
+if [ -z ${S_MANUAL_MULTIPLEX+x} ] && ! [[ "$S_HOSTNAME" == "minervarun" ]]; then
   scp $S_HOSTNAME:$S_FILE_RECONNECT $S_SCRIPTDIR/ &> /dev/null
 fi
 
@@ -505,11 +574,24 @@ S_RCI=$S_SCRIPTDIR/$S_BASE_RECONNECT
 if [ -f $S_RCI ]; then
   RC_BJOB=$(sed -nE 's/^BJOB[a-zA-Z ]+: (.+)/\1/p' $S_RCI)
   S_CHECKJOB="bjobs | grep -q $RC_BJOB && echo running || echo done"
-  RC_JOBSTATE=$(ssh $S_HOSTNAME $S_CHECKJOB)
+  echodebug "S_CHECKJOB: $S_CHECKJOB"
+  if [[ "$S_HOSTNAME" == "minervarun" ]]; then
+    RC_JOBSTATE=$(eval "$S_CHECKJOB")
+  else
+    RC_JOBSTATE=$(ssh $S_HOSTNAME $S_CHECKJOB)
+  fi
+  echodebug "RC_JOBSTATE: $RC_JOBSTATE"
   if [[ $RC_JOBSTATE == "running" ]]; then
     echo
     cat $S_RCI
     echo
+
+    if [[ "$S_HOSTNAME" == "minervarun" ]]; then
+      S_FWDCMD=$(sed -nE 's/^SSH tunnel +: (.+)/\1/p' $S_RCI)
+      S_PASSWORD=$(sed -nE 's/^Password +: (.+)/\1/p' $S_RCI)
+      instructs_mrun
+      exit 0
+    fi
 
     RC_PRT_REMOTE=$(sed -nE 's/^Remote port +: (.+)/\1/p' $S_RCI)
     RC_IP_REMOTE=$(sed -nE 's/^Remote IP address +: (.+)/\1/p' $S_RCI)
@@ -556,26 +638,29 @@ else
 fi
 
 # check for log files from a previous session in the home directory of the cluster
-info_sessionfile=$(echoinfo "Found old remote session file, deleting it ...")
-info_ipfile=$(echoinfo "Found old IP file, deleting it ...")
-info_jobfile=$(echoinfo "Found old job file, deleting it ...")
-
-ssh $S_HOSTNAME bash <<ENDSSH
+S_CONTENTS_RMFILES=$(cat <<EOF
 if [[ -f $S_FILE_RECONNECT ]]; then
-  echo $info_sessionfile
+  echo $(echoinfo "Found old remote session file, deleting it ...")
   rm $S_FILE_RECONNECT
 fi
 
 if [[ -f $S_FILE_IP ]]; then
-  echo $info_ipfile
+  echo $(echoinfo "Found old IP file, deleting it ...")
   rm $S_FILE_IP
 fi
 
 if [[ -f $S_FILE_JOB ]]; then
-  echo $info_jobfile
+  echo $(echoinfo "Found old job file, deleting it ...")
   rm $S_FILE_JOB
 fi
-ENDSSH
+EOF
+)
+
+if [[ "$S_HOSTNAME" == "minervarun" ]]; then
+  eval "$S_CONTENTS_RMFILES"
+else
+  ssh $S_HOSTNAME "bash -c '$S_CONTENTS_RMFILES'"
+fi
 
 ###############################################################################
 # Check configuration options                                                 #
@@ -591,9 +676,9 @@ if ! [[ "$S_NUM_CPU" =~ ^[0-9]+$ ]]; then
   display_help
 fi
 
-# check if S_NUM_CPU is <= 48
-if [ "$S_NUM_CPU" -gt "48" ]; then
-  echoerror "$S_NUM_CPU -> Larger than 48. No distributed memory supported, therefore the number of CPU cores needs to be smaller or equal to 128\n"
+# check if S_NUM_CPU is <= 64
+if [ "$S_NUM_CPU" -gt "64" ]; then
+  echoerror "$S_NUM_CPU -> Larger than 64. No distributed memory supported, therefore the number of CPU cores needs to be smaller or equal to 128\n"
   display_help
 fi
 
@@ -601,14 +686,54 @@ if [ "$S_NUM_CPU" -gt "0" ]; then
   echoinfo "Requesting $S_NUM_CPU CPU cores for running the server"
 fi
 
+if [[ "$S_RUN_TIME" == "max" ]]; then
+  echoinfo "Run time limit set to maximum"
+  if [[ $S_QUEUE == "auto" ]]; then
+    S_QUEUE="long"
+    S_RUN_TIME="336:00"
+    echodebug "Long queue selected"
+  elif [[ $S_QUEUE == "long" ]]; then
+    S_RUN_TIME="336:00"
+  elif [[ $S_QUEUE == "premium" || $S_QUEUE == "gpu" ]]; then
+    S_RUN_TIME="144:00"
+  elif [[ $S_QUEUE == "express" ]]; then
+    S_RUN_TIME="12:00"
+  elif [[ $S_QUEUE == "gpuexpress" ]]; then
+    S_RUN_TIME="15:00"
+  fi
+fi
+
 # check if S_RUN_TIME is provided in HH:MM format
 if [[ "$S_RUN_TIME" =~ ^([0-9]{1,3}):([0-9]{2})$ ]]; then
   S_HOURS=${BASH_REMATCH[1]}
   S_MIN=$(echo ${BASH_REMATCH[2]} | sed 's/^0\(.\)$/\1/')
   S_MIN_TOT=$(($S_MIN + 60 * $S_HOURS))
-  if [[ ( $S_MIN_TOT -gt 8640 && $S_QUEUE != "long" ) ||
-        $S_MIN_TOT -gt 20160 ]]; then
+  if [[ $S_MIN_TOT -gt 20160 ]]; then
     echoerror "$S_RUN_TIME -> Runtime limit is too long. Please try again\n"
+    display_help
+  fi
+  if [[ $S_QUEUE == "auto" ]]; then
+    if [[ $S_MIN_TOT -gt 8640 ]]; then
+      S_QUEUE="long"
+      echodebug "Long queue selected"
+    elif [[ $S_MIN_TOT -gt 720 ]]; then
+      S_QUEUE="premium"
+      echodebug "Premium queue selected"
+    else
+      S_QUEUE="express"
+      echodebug "Express queue selected"
+    fi
+  elif [[ $S_QUEUE == "gpu" && $S_MIN_TOT -gt 8640 ]]; then
+    echoerror "$S_RUN_TIME -> Runtime limit is too long for the GPU queue. Please try again\n"
+    display_help
+  elif [[ $S_QUEUE == "gpuexpress" && $S_MIN_TOT -gt 900 ]]; then
+    echoerror "$S_RUN_TIME -> Runtime limit is too long for the GPU express queue. Please try again\n"
+    display_help
+  elif [[ $S_QUEUE == "premium" && $S_MIN_TOT -gt 8640 ]]; then
+    echoerror "$S_RUN_TIME -> Runtime limit is too long for the premium queue. Please try again\n"
+    display_help
+  elif [[ $S_QUEUE == "express" && $S_MIN_TOT -gt 720 ]]; then
+    echoerror "$S_RUN_TIME -> Runtime limit is too long for the express queue. Please try again\n"
     display_help
   fi
   echoinfo "Run time limit set to $S_RUN_TIME"
@@ -623,6 +748,17 @@ if ! [[ "$S_MEM_PER_CPU_CORE" =~ ^[0-9]+$ ]]; then
   display_help
 else
   echoinfo "Memory per core set to $S_MEM_PER_CPU_CORE MB"
+  S_MEM_TOTAL=$(($S_MEM_PER_CPU_CORE * $S_NUM_CPU))
+  echoinfo "Total memory set to $S_MEM_TOTAL MB"
+  if [[ $S_MEM_TOTAL -gt 190000 ]]; then
+    if [[ $S_RESOURCE == "null" ]]; then
+      S_RESOURCE="himem"
+      echoinfo "Requesting himem resources"
+    elif ! [[ $S_RESOURCE =~ himem ]]; then
+      S_RESOURCE+=" -R himem"
+      echoinfo "Requesting himem resources"
+    fi
+  fi
 fi
 
 # check if S_WAITING_INTERVAL is an integer
@@ -637,15 +773,27 @@ fi
 
 echoinfo "Checking LSF project"
 
+if [[ $S_HOSTNAME == "minervarun" ]]; then
+  S_BALANCE=$(mybalance)
+else
+  S_BALANCE=$(ssh $S_HOSTNAME mybalance)
+fi
+
 if [[ $S_ACCT == "acc_null" ]]; then
-  echoinfo "Project is not specified, or is acc_null, using 1st avail project."
-  S_ACCT=$(ssh $S_HOSTNAME mybalance | grep acc_ | awk '{ print $2 }' | head -1)
-  if [[ $S_ACCT == "" ]]; then
+  S_ACCT_ONE=$(echo "$S_BALANCE" | awk '$2 ~ /acc_/ { print $2; exit}')
+  S_ACCT_CATS=$(echo "$S_BALANCE" | awk '$3 == "Yes" { print $2; exit}')
+  if [[ $S_ACCT_ONE == "" ]]; then
     echoerror "You don't have any project assigned, please contact HPC administrator"
     exit 2
+  elif echo "$S_BALANCE" | grep -q acc_LOAD; then
+    S_ACCT=acc_LOAD
+  elif [[ $S_ACCT_CATS != "" ]]; then
+    S_ACCT=$S_ACCT_CATS
+  else
+    S_ACCT=$S_ACCT_ONE
   fi
   echoinfo "Project not specified. Using $S_ACCT."
-elif ! ssh $S_HOSTNAME mybalance | grep -q "$S_ACCT"; then
+elif ! echo "$S_BALANCE" | grep -q "$S_ACCT"; then
   echoerror "You must specify a valid LSF project or use the default, please try again"
   display_help
 fi
@@ -656,14 +804,24 @@ fi
 
 echoinfo "Computing conda environment"
 
-RS_CONDADIRS=$(ssh $S_HOSTNAME "conda info" | awk '
+if [[ $S_HOSTNAME == "minervarun" ]]; then
+  S_CONDAINFO=$(conda info 2> /dev/null)
+else
+  S_CONDAINFO=$(ssh $S_HOSTNAME "conda info" 2> /dev/null)
+fi
+
+RS_CONDADIRS=$(echo "$S_CONDAINFO" | awk '
   $0 ~ "envs directories" {a = 1; print $4; next} \
   $0 ~ ":" {a = 0} a == 1 {print $1}')
 
-
 if [[ $RS_CONDAENV == "null" ]]; then
   echoinfo "Conda environment not specified; detecting default."
-  RS_CONDAEP=$(ssh $S_HOSTNAME -t 'bash -lc "echo \$CONDA_DEFAULT_ENV \$CONDA_PREFIX"' 2> /dev/null)
+  if [[ $S_HOSTNAME == "minervarun" ]]; then
+    RS_CONDAEP="$CONDA_DEFAULT_ENV $CONDA_PREFIX"
+  else
+    echodebug "Getting conda default environment and prefix"
+    RS_CONDAEP=$(ssh $S_HOSTNAME -t 'bash -lc "echo \$CONDA_DEFAULT_ENV \$CONDA_PREFIX"' 2> /dev/null)
+  fi
   RS_CONDANF=$(echo $RS_CONDAEP | awk '1 {print NF}')
   if [[ $RS_CONDANF -ne 2 ]]; then
     echoerror "Conda not functioning on Minerva"
@@ -673,14 +831,19 @@ if [[ $RS_CONDAENV == "null" ]]; then
   RS_PREFIX=$(echo $RS_CONDAEP | awk '1 {print $2}' | tr -d '\r')
 elif [[ $RS_CONDAENV =~ "/" ]]; then
   RS_PREFIX=$RS_CONDAENV
+elif [[ $S_HOSTNAME == "minervarun" ]]; then
+  echodebug "Getting conda environment list"
+  RS_PREFIX=$(conda info --envs |
+              awk -v env=$RS_CONDAENV '$1 == env {print $2}')
 else
+  echodebug "Getting conda environment list"
   RS_PREFIX=$(ssh $S_HOSTNAME "conda info --envs" |
               awk -v env=$RS_CONDAENV '$1 == env {print $2}')
 fi
 
 echoinfo "Using environment $RS_CONDAENV at $RS_PREFIX"
 
-ssh $S_HOSTNAME "cat > $S_FILE_LOGCONF" <<<cat <<EOF
+S_CONTENTS_LOGCONF=$(cat <<EOF
 [*]
 log-level=debug
 logger-type=file
@@ -693,27 +856,46 @@ max-rotations=50
 delete-days=10
 warn-syslog=0
 EOF
+)
+
+echodebug "Logging configuration contents:"
+if [[ $S_DEBUG -eq 1 ]]; then
+  echo "$S_CONTENTS_LOGCONF"
+fi
 
 #  . /etc/profile.d/modules.sh && \
 #  . /etc/profile.d/z00_lmod.sh && \
 #  . /etc/profile.d/00-modulepath.sh && \
+#  . /etc/profile.d/lsf.sh && \
 
-ssh $S_HOSTNAME "cat > $S_FILE_BASHPROF" <<<cat <<EOF
-  . /opt/conda/etc/profile.d/conda.sh && \
-  . /opt/conda/etc/profile.d/mamba.sh && \
-  . /etc/profile.d/lsf.sh && \
-  alias ll='ls -l' && \
-  echo "Activated $RS_CONDAENV"
-  mamba activate $RS_CONDAENV
-  export http_proxy=http://172.28.7.1:3128
-  export https_proxy=http://172.28.7.1:3128
-  export all_proxy=http://172.28.7.1:3128
-  export no_proxy=localhost,*.chimera.hpc.mssm.edu,172.28.0.0/16
+S_CONTENTS_BASHPROF=$(cat <<EOF
+PATH=\$(echo \$PATH |
+  awk -v RS=':' '!/conda/ { printf "%s%s", sep, \$0; sep = ":" }')
+LD_LIBRARY_PATH=\$(echo \$LD_LIBRARY_PATH |
+  awk -v RS=':' '!/conda/ { printf "%s%s", sep, \$0; sep = ":" }')
+. /opt/conda/etc/profile.d/conda.sh && \
+. /opt/conda/etc/profile.d/mamba.sh && \
+alias ll='ls -l' && \
+mamba activate py3.11
+export http_proxy=http://172.28.7.1:3128
+export https_proxy=http://172.28.7.1:3128
+export ftp_proxy=http://172.28.7.1:3128
+export rsync_proxy=http://172.28.7.1:3128
+export all_proxy=http://172.28.7.1:3128
+export no_proxy=localhost,*.chimera.hpc.mssm.edu,172.28.0.0/16
+alias minerva='conda deactivate; echo leaving sandbox; ssh -t li03c03 ijob'
 EOF
+)
+
+echodebug "Bash profile contents:"
+if [[ $S_DEBUG -eq 1 ]]; then
+  echo "$S_CONTENTS_BASHPROF"
+fi
 
 echoinfo "Building LSF jobscript"
 
-ssh $S_HOSTNAME "cat > $S_FILE_JOB" <<<cat <<EOF
+#ssh $S_HOSTNAME "cat > $S_FILE_JOB" <<<cat <<EOF
+S_CONTENTS_JOB=$(cat <<EOF
 #!/usr/bin/env bash
 #BSUB -J rstudio$S_SESSION
 #BSUB -P $S_ACCT
@@ -726,19 +908,27 @@ ssh $S_HOSTNAME "cat > $S_FILE_JOB" <<<cat <<EOF
 #BSUB -eo $RS_WORKDIR/rstudio$S_SESSION_%J.err
 #BSUB -L /bin/bash
 EOF
+)
 
+echodebug "Adding resource requirements to job script"
+
+# split S_RESOURCE, using " -R " as delimiter, and loop over the elements
 if [[ $S_RESOURCE != "null" ]]; then
-  ssh $S_HOSTNAME "cat >> $S_FILE_JOB" <<<cat <<EOF
-#BSUB -R $S_RESOURCE
-EOF
+  for r in $(echo $S_RESOURCE | tr " -R " "\n"); do
+    S_CONTENTS_JOB+="$(printf "\n#BSUB -R %s\n" $r)"
+  done
 fi
 
-ssh $S_HOSTNAME "cat >> $S_FILE_JOB" <<<cat <<EOF
+echodebug "Done adding resource requirements to job script"
+
+S_CONTENTS_JOB+=$(cat <<EOF
 
 
 export http_proxy=http://172.28.7.1:3128
 export https_proxy=http://172.28.7.1:3128
 export all_proxy=http://172.28.7.1:3128
+export ftp_proxy=http://172.28.7.1:3128
+export rsync_proxy=http://172.28.7.1:3128
 export no_proxy=localhost,*.chimera.hpc.mssm.edu,172.28.0.0/16
 
 S_IP_REMOTE="\$(hostname -i)"
@@ -798,73 +988,75 @@ singularity run \\
   --bind $RS_WORKDIR/rserver.conf:/etc/rstudio/rserver.conf \\
   --bind ${RS_PREFIX}:${RS_PREFIX} \\
   --bind $S_FILE_LOGCONF:/etc/rstudio/logging.conf \\
-  --bind /hpc/packages \\
   --bind $RS_TMP/run:/serverdir \\
   --bind $S_DIR_LOGCONF:/rstudio_logs \\
   --bind $RS_TMP/tmp:/tmp/rstudio-server \\
   --bind /opt/hpc:/opt/hpc:ro \\
-  --bind /etc/profile.d/00-modulepath.sh:/etc/profile.d/00-modulepath.sh \\
-  --bind /etc/profile.d/00-modulepath.csh:/etc/profile.d/00-modulepath.csh \\
-  --bind /etc/profile.d/lsf.sh:/etc/profile.d/lsf.sh \\
-  --bind /etc/profile.d/lsf.csh:/etc/profile.d/lsf.csh \\
-  --bind /etc/profile.d/mpi-selector.sh:/etc/profile.d/mpi-selector.sh \\
-  --bind /etc/profile.d/z00_lmod.sh:/etc/profile.d/z00_lmod.sh \\
-  --bind /usr/share/lmod/:/usr/share/lmod/:ro \\
-  --bind /hpc/lsf:/hpc/lsf:ro \\
   --app rserver \\
   --env PASSWORD=\$PASSWORD \\
   --env RS_CONDAENV=$RS_CONDAENV \\
   --env USER=$S_USERNAME \\
   --cleanenv \\
 EOF
+)
 
-for i in $RS_CONDADIRS; do
-  if ssh $S_HOSTNAME "test -e \"$i\""; then
-    bindstr="  --bind $i \\\\"
-    ssh $S_HOSTNAME "echo \"$bindstr\" >> $S_FILE_JOB"
+#  --bind /hpc/packages \\
+#  --bind /etc/profile.d/00-modulepath.sh:/etc/profile.d/00-modulepath.sh \\
+#  --bind /etc/profile.d/00-modulepath.csh:/etc/profile.d/00-modulepath.csh \\
+#  --bind /etc/profile.d/lsf.sh:/etc/profile.d/lsf.sh \\
+#  --bind /etc/profile.d/lsf.csh:/etc/profile.d/lsf.csh \\
+#  --bind /etc/profile.d/mpi-selector.sh:/etc/profile.d/mpi-selector.sh \\
+#  --bind /etc/profile.d/z00_lmod.sh:/etc/profile.d/z00_lmod.sh \\
+#  --bind /usr/share/lmod/:/usr/share/lmod/:ro \\
+#  --bind /hpc/lsf:/hpc/lsf:ro \\
+
+echodebug "Adding conda and module binds to job script"
+
+cmdstr=$(cat <<EOF
+  echo
+  for i in $(echo "$RS_CONDADIRS" | tr '\n' ' '); do
+    if test -e "\$i"; then
+      echo "  --bind \$i "
+    fi
+  done
+  if test -e "\$HOME/.condarc"; then
+    echo "  --bind \$HOME/.condarc:/etc/conda/condarc "
   fi
-done
-
-if ssh $S_HOSTNAME "test -e \"\$HOME/.condarc\""; then
-  bindstr="  --bind \$HOME/.condarc:/etc/conda/condarc \\\\"
-  ssh $S_HOSTNAME "echo \"$bindstr\" >> $S_FILE_JOB"
-fi
-
-if [[ $S_REMOTE_SHELL == "fish" ]]; then
-  ssh -T $S_HOSTNAME <<ENDSSH
-  if ! set -q \$MODULEPATH
-    for j in \$MODULEPATH
-      set bindstr "  --bind \$j \\\\"
-      echo "\$bindstr" >> $S_FILE_JOB
-    end
-  end
-ENDSSH
-else
-  ssh -T $S_HOSTNAME <<ENDSSH
   if [ ! -z "\$MODULEPATH" ]; then
-    for j in \${MODULEPATH//:/ }; do
-      bindstr="  --bind \$j \\\\"
-      echo "\$bindstr" >> $S_FILE_JOB
+    for i in \${MODULEPATH//:/ }; do
+      echo "  --bind \$i "
     done
   fi
-ENDSSH
+EOF
+)
+
+if [[ $S_HOSTNAME == "minervarun" ]]; then
+  S_CONTENTS_JOB+=$(bash -c "$cmdstr" | sed '/./ s|$|\\|')
+else
+  S_CONTENTS_JOB+=$(ssh $S_HOSTNAME "bash -c '$cmdstr'" | sed '/./ s|$|\\|')
 fi
 
-if [[ S_ISOLATED -eq 1 ]]; then
-  ssh $S_HOSTNAME "cat >> $S_FILE_JOB" <<<cat <<EOF
+if [[ $S_ISOLATED -eq 1 ]]; then
+  S_CONTENTS_JOB+="$(cat <<EOF
+
   --no-home \\
   --home $RS_TMP/home:/myhome \\
   --bind $RS_TMP/home:/myhome \\
   --bind $S_DIR_CONFIG:/myhome/.config/rstudio \\
   --bind $S_FILE_BASHPROF:/myhome/.bash_profile \\
+  --bind \$HOME/.ssh:/myhome/.ssh \\
 EOF
+)"
 else
-  ssh $S_HOSTNAME "cat >> $S_FILE_JOB" <<<cat <<EOF
-  --bind $S_FILE_BASHPROF:/hpc/users/$S_USER/.bash_profile \\
+  S_CONTENTS_JOB+="$(cat <<EOF
+
+  --bind $S_FILE_BASHPROF:/hpc/users/$S_USERNAME/.bash_profile \\
 EOF
+)"
 fi
 
-ssh $S_HOSTNAME "cat >> $S_FILE_JOB" <<<cat <<EOF
+S_CONTENTS_JOB+="$(cat <<EOF
+
   $RS_IMAGE --auth-none 0 --auth-pam-helper-path=pam-helper \\
   --www-port \$S_PORT_REMOTE --server-data-dir=/serverdir \\
   --rsession-which-r=\$RSTUDIO_R_BIN \\
@@ -910,57 +1102,108 @@ cleanup () {
 trap cleanup SIGTERM SIGQUIT SIGINT
 wait
 cleanup
-EOF
 
+EOF
+)"
+
+echodebug "Job script contents:"
+if [[ $S_DEBUG -eq 1 ]]; then
+  echo "$S_CONTENTS_JOB"
+fi
+
+if [[ $S_HOSTNAME == "minervarun" ]]; then
+  # Store the docstring in $S_FILE_LOGCONF locally
+  echodebug "Locally copying logconf, bashprof, and job files on minerva"
+  echo "$S_CONTENTS_LOGCONF" > "$S_FILE_LOGCONF"
+  echo "$S_CONTENTS_BASHPROF" > "$S_FILE_BASHPROF"
+  echo "$S_CONTENTS_JOB" > "$S_FILE_JOB"
+else
+  # Copy the docstring to $S_FILE_LOGCONF remotely
+  echodebug "Copying logconf, bashprof, and job files to $S_HOSTNAME"
+  ssh -T $S_HOSTNAME "cat > '$S_FILE_LOGCONF'" <<< "$S_CONTENTS_LOGCONF"
+  ssh -T $S_HOSTNAME "cat > '$S_FILE_BASHPROF'" <<< "$S_CONTENTS_BASHPROF"
+  ssh -T $S_HOSTNAME "cat > '$S_FILE_JOB'" <<< "$S_CONTENTS_JOB"
+fi
+echodebug "Done copying logconf, bashprof, and job files"
 
 TRY=1
 SUCCESS=0
 
 while ( [ $TRY -lt 4 ] && [ $SUCCESS -eq 0 ] ); do
-  # run the job on Minerva and save the ip of the compute node in the home directory of the user on Euler
+  # run the job on Minerva and save the ip of the compute node in the home directory of the user
   echo
   echoinfo "Connecting to $S_HOSTNAME to start the server in a batch job"
-  S_BJOB_OUT=$(ssh $S_HOSTNAME "bsub < $S_FILE_JOB")
+  echodebug "Try $TRY to start the server"
+  if [[ $S_HOSTNAME == "minervarun" ]]; then
+    S_BJOB_OUT=$(bsub < $S_FILE_JOB)
+  else
+    S_BJOB_OUT=$(ssh $S_HOSTNAME "bsub < $S_FILE_JOB")
+  fi
   S_BJOB_ID=$(echo $S_BJOB_OUT | awk '/is submitted/{print substr($2, 2, length($2)-2);}')
   
   # wait until batch job has started, poll every $S_WAITING_INTERVAL seconds to check if IP file exists
   # once the file exists and is not empty the batch job has started
   echoinfo "Waiting for job to start\n"
-  ssh -T $S_HOSTNAME bash <<ENDSSH
-  while ! [ -e $S_FILE_IP -a -s $S_FILE_IP ]; do
-    echo 'Waiting for job to start, sleep for $S_WAITING_INTERVAL sec'
-    sleep $S_WAITING_INTERVAL
-  done
+  if [[ $S_HOSTNAME == "minervarun" ]]; then
+    while ! [ -e $S_FILE_IP -a -s $S_FILE_IP ]; do
+      echo "Waiting for job to start, sleep for $S_WAITING_INTERVAL sec"
+      sleep $S_WAITING_INTERVAL
+    done
+  else
+    ssh -T $S_HOSTNAME bash <<ENDSSH
+      while ! [ -e $S_FILE_IP -a -s $S_FILE_IP ]; do
+        echo 'Waiting for job to start, sleep for $S_WAITING_INTERVAL sec'
+        sleep $S_WAITING_INTERVAL
+      done
 ENDSSH
-
+  fi
   echo
   
   echoinfo "Waiting for server to start\n"
-  ssh -T $S_HOSTNAME bash <<ENDSSH
-  wait_time=0
-  while [[ \$wait_time -lt 25 ]] && ! grep -q "Status" $S_FILE_IP; do
-    let wait_time+=5
-    echo 'Waiting for server to start, sleep for 5 sec'
-    sleep 5
-  done
+  if [[ $S_HOSTNAME == "minervarun" ]]; then
+    wait_time=0
+    while [[ $wait_time -lt 25 ]] && ! grep -q "Status" $S_FILE_IP; do
+      let wait_time+=5
+      echo 'Waiting for server to start, sleep for 5 sec'
+      sleep 5
+    done
+  else
+    ssh -T $S_HOSTNAME bash <<ENDSSH
+      wait_time=0
+      while [[ \$wait_time -lt 25 ]] && ! grep -q "Status" $S_FILE_IP; do
+        let wait_time+=5
+        echo 'Waiting for server to start, sleep for 5 sec'
+        sleep 5
+      done
 ENDSSH
-  
+  fi
+
   # get remote ip, port and token from files stored on Minerva
-  if ! ssh $S_HOSTNAME "grep -q Status $S_FILE_IP"; then
+  if [[ $S_HOSTNAME == "minervarun" ]]; then
+    S_CONTENTS_IP=$(cat $S_FILE_IP)
+  else
+    S_CONTENTS_IP=$(ssh $S_HOSTNAME "cat $S_FILE_IP")
+  fi
+
+  echodebug "Contents of the IP file:"
+  if [[ $S_DEBUG -eq 1 ]]; then
+    echo "$S_CONTENTS_IP"
+  fi
+
+  if ! echo "$S_CONTENTS_IP" | grep -q Status; then
     echoerror "Server did not report status"
     exit 1
   fi
 
-  S_REMOTE_STATUS=$(ssh $S_HOSTNAME "cat $S_FILE_IP |
-                    grep -m1 'Status' | cut -d ':' -f 2")
+  S_REMOTE_STATUS=$(echo "$S_CONTENTS_IP" | grep -m1 'Status' | cut -d ':' -f 2)
   if [[ $S_REMOTE_STATUS == "GOOD" ]]; then
     echoinfo "Receiving ip and port from the server"
-    S_REMOTE_IP=$(ssh $S_HOSTNAME "cat $S_FILE_IP | grep -m1 'Remote IP' | cut -d ':' -f 2")
-    S_REMOTE_PORT=$(ssh $S_HOSTNAME "cat $S_FILE_IP | grep -m1 'Remote Port' | cut -d ':' -f 2")
+    S_REMOTE_IP=$(echo "$S_CONTENTS_IP" | grep -m1 'Remote IP' | cut -d ':' -f 2)
+    S_REMOTE_PORT=$(echo "$S_CONTENTS_IP" | grep -m1 'Remote Port' | cut -d ':' -f 2)
     SUCCESS=1
   elif [[ $S_REMOTE_STATUS == "BUSY" ]]; then
-    hostname=$(ssh $S_HOSTNAME "cat $S_FILE_IP | grep -m1 'HOSTNAME' | cut -d ':' -f 2")
-    owner=$(ssh $S_HOSTNAME "cat $S_FILE_IP | grep -m1 'OWNER' | cut -d ':' -f 2")
+    hostname=$(echo "$S_CONTENTS_IP" | grep -m1 'HOSTNAME' | cut -d ':' -f 2)
+    owner=$(echo "$S_CONTENTS_IP" | grep -m1 'OWNER' | cut -d ':' -f 2)
     if [ $TRY -eq 3 ]; then
       echoerror "$owner is running a session on $hostname, therefore execution is blocked..."
       echoerror "Please resubmit your job to get your job dispatched to another node. "
@@ -969,13 +1212,17 @@ ENDSSH
     else
       echoalert "Attempt $TRY failed due to $owner running a session on $hostname:"
       echoalert "Trying again"
-      ssh $S_HOSTNAME "rm $S_FILE_IP"
+      if [[ $S_HOSTNAME == "minervarun" ]]; then
+        rm $S_FILE_IP
+      else
+        ssh $S_HOSTNAME "rm $S_FILE_IP"
+      fi
     fi
   elif [[ $S_REMOTE_STATUS == "DEAD" ]]; then
     echoerror "Server died while starting"
     exit 1
   elif [[ $S_REMOTE_STATUS == "FAIL" ]]; then
-    S_REMOTE_EXIT=$(ssh $S_HOSTNAME "cat $S_FILE_IP | grep -m1 'Code' | cut -d ':' -f 2")
+    S_REMOTE_EXIT=$(echo "S_CONTENTS_IP" | grep -m1 'Code' | cut -d ':' -f 2)
     echoerror "Server died with the exit code $S_REMOTE_EXIT"
     exit $S_REMOTE_EXIT
   fi
@@ -988,7 +1235,6 @@ echoerror "remote ip is not defined. Terminating script."
 echoerror "* Please check login to the cluster and check with bjobs if the batch job on the cluster is running and terminate it with bkill."
 exit 1
 fi
-
 
 # get a free port on local computer
 ## S_LOCAL_PORT=$((3 * 2**14 + RANDOM % 2**14))
@@ -1003,7 +1249,9 @@ find_port() {
   echo $PRT
 }
 
-if ! [ -z ${S_SESSION+x} ]; then
+if [[ $S_HOSTNAME == "minervarun" ]]; then
+  S_LOCAL_PORT=LOCAL_PORT
+elif ! [ -z ${S_SESSION+x} ]; then
   S_LOCAL_PORT=$(find_port 8990)
 else
   S_LOCAL_PORT=$(find_port 8999)
@@ -1011,16 +1259,22 @@ fi
 
 S_FWDCMD="ssh $S_HOSTNAME -L $S_LOCAL_PORT:$S_REMOTE_IP:$S_REMOTE_PORT -fNT"
 
-# setup SSH tunnel from local computer to compute node via login node
-echoinfo "Setting up SSH tunnel for connecting the browser to the server"
-$S_FWDCMD
-
-# SSH tunnel is started in the background, pause 3 seconds to make sure
-# it is established before starting the browser
-sleep 3
-
-S_PASSWORD=$(ssh $S_HOSTNAME "cat $S_FILE_PASSWORD" | 
-             awk -F "=" '$1 == "export PASSWORD" {print $2}')
+if ! [[ $S_HOSTNAME == "minervarun" ]]; then
+  # setup SSH tunnel from local computer to compute node via login node
+  echoinfo "Setting up SSH tunnel for connecting the browser to the server"
+  $S_FWDCMD
+  
+  # SSH tunnel is started in the background, pause 3 seconds to make sure
+  # it is established before starting the browser
+  sleep 3
+  
+  S_PASSWORD=$(ssh $S_HOSTNAME "cat $S_FILE_PASSWORD" | 
+               awk -F "=" '$1 == "export PASSWORD" {print $2}')
+else
+  S_FWDCMD=$(echo $S_FWDCMD | sed "s/minervarun/minerva/")
+  S_PASSWORD=$(cat $S_FILE_PASSWORD |
+               awk -F "=" '$1 == "export PASSWORD" {print $2}')
+fi
 
 # print information about IP, ports and token
 echoinfo "Server info:"
@@ -1046,32 +1300,38 @@ Password          : $S_PASSWORD
 EOF
 
 # Copy connection information to the remote machine
-if [ -z ${S_MANUAL_MULTIPLEX+x} ]; then
+if [[ $S_HOSTNAME == "minervarun" ]]; then
+  cp $S_RCI $S_FILE_RECONNECT
+elif [ -z ${S_MANUAL_MULTIPLEX+x} ]; then
   scp $S_RCI $S_HOSTNAME:$S_FILE_RECONNECT &> /dev/null
 fi
 
-# save url in variable
-S_URL=http://localhost:$S_LOCAL_PORT
-echoinfo "Starting browser and connecting it to the server"
-echoinfo "Connecting to url $S_URL"
-
-# start local browser if possible
-if [[ "$OSTYPE" == "linux-gnu" ]]; then
-  if which wlslview 2>1 > /dev/null; then
-    wslview $S_URL # USING Windows Subsystem for Linux
-  elif ! [ -z ${WSLENV+x} ]; then
-    echowarn "Your are using Windows Subsystem for Linux, but wslu is not "
-    echowarn "available.\n"
-    echowarn "Install wslu for automatic browser opening.\n"
-    echoinfo "Please open $S_URL in your browser."
-  else
-    xdg-open $S_URL
-  fi
-elif [[ "$OSTYPE" == "darwin"* ]]; then
-  macos_open $S_LOCAL_PORT
-elif [[ "$OSTYPE" == "msys" ]]; then # Git Bash on Windows 10
-  start $S_URL
+if [[ $S_HOSTNAME == "minervarun" ]]; then
+  instructs_mrun
 else
-  echowarn "Your OS does not allow starting browsers automatically."
-  echoinfo "Please open $S_URL in your browser."
+  # save url in variable
+  S_URL=http://localhost:$S_LOCAL_PORT
+  echoinfo "Starting browser and connecting it to the server"
+  echoinfo "Connecting to url $S_URL"
+  
+  # start local browser if possible
+  if [[ "$OSTYPE" == "linux-gnu" ]]; then
+    if which wlslview 2>1 > /dev/null; then
+      wslview $S_URL # USING Windows Subsystem for Linux
+    elif ! [ -z ${WSLENV+x} ]; then
+      echowarn "Your are using Windows Subsystem for Linux, but wslu is not "
+      echowarn "available.\n"
+      echowarn "Install wslu for automatic browser opening.\n"
+      echoinfo "Please open $S_URL in your browser."
+    else
+      xdg-open $S_URL
+    fi
+  elif [[ "$OSTYPE" == "darwin"* ]]; then
+    macos_open $S_LOCAL_PORT
+  elif [[ "$OSTYPE" == "msys" ]]; then # Git Bash on Windows 10
+    start $S_URL
+  else
+    echowarn "Your OS does not allow starting browsers automatically."
+    echoinfo "Please open $S_URL in your browser."
+  fi
 fi
