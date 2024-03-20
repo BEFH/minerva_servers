@@ -64,7 +64,7 @@ S_VERSION="0.8.1"
 S_SCRIPTDIR=$HOME
 
 # hostname of the cluster to connect to
-if [ -d /hpc/users ]; then
+if [ -d /etc/lsb-release.d ]; then
   S_HOSTNAME="minervarun"
 elif grep -q 'Host minerva[[:space:]]*$' $HOME/.ssh/config &> /dev/null; then
   S_HOSTNAME="minerva"
