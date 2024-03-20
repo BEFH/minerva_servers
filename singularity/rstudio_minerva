@@ -886,7 +886,7 @@ LD_LIBRARY_PATH=\$(echo \$LD_LIBRARY_PATH |
 . /opt/conda/etc/profile.d/conda.sh && \
 . /opt/conda/etc/profile.d/mamba.sh && \
 alias ll='ls -l' && \
-mamba activate py3.11
+mamba activate $RS_CONDAENV
 export http_proxy=http://172.28.7.1:3128
 export https_proxy=http://172.28.7.1:3128
 export ftp_proxy=http://172.28.7.1:3128
