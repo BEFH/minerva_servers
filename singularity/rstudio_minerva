@@ -11,9 +11,11 @@
 #                  : Andreas Lugmayr, Mike Boss                               #
 #  Date            : October 2021                                             #
 #  Location        : Mount Sinai (originally ETH Zurich)                      #
-#  Version         : 0.8.0                                                    #
+#  Version         : 0.8.1                                                    #
 #  Change history  :                                                          #
 #                                                                             #
+#  20.03.2024    Only log at debug level in Rstudio if --debug; Allow use     #
+#                of Github Copilot                                            #
 #  20.03.2024    Remove attempts at lsf and lmod; allow breaking out of       #
 #                sandbox onto Minerva by typing "minerva" in the terminal     #
 #                optionally followed by bsub arguments; allow running on      #
@@ -55,7 +57,7 @@
 ###############################################################################
 
 # Version
-S_VERSION="0.8.0"
+S_VERSION="0.8.1"
 
 # Script directory
 # old RS_SCRIPTDIR=$(pwd)
@@ -482,6 +484,8 @@ fi
 if ! test -e "$RS_WORKDIR/rsession.conf"; then
   printf "# add your configuration here\n" > $RS_WORKDIR/rsession.conf
   printf "session-timeout-minutes=9000\n" >> $RS_WORKDIR/rsession.conf
+  printf "copilot-enabled=1\n" >> $RS_WORKDIR/rsession.conf
+  printf "copilot-proxy-url=http://172.28.7.1:3128\n" >> $RS_WORKDIR/rsession.conf
 fi
 if ! test -e "$RS_WORKDIR/rserver.conf"; then
   printf "# add your configuration here\n" > $RS_WORKDIR/rserver.conf
@@ -843,9 +847,15 @@ fi
 
 echoinfo "Using environment $RS_CONDAENV at $RS_PREFIX"
 
+R_LOG_LEVEL="info"
+if [[ $S_DEBUG -eq 1 ]]; then
+  echodebug "R Log level set to debug"
+  R_LOG_LEVEL="debug"
+fi
+
 S_CONTENTS_LOGCONF=$(cat <<EOF
 [*]
-log-level=debug
+log-level=$R_LOG_LEVEL
 logger-type=file
 log-dir=/rstudio_logs
 
