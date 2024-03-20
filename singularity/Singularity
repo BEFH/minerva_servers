@@ -42,7 +42,5 @@ From: rocker/rstudio:4.3
     echo "Enabling conda" && \
       . /opt/conda/etc/profile.d/conda.sh && \
       . /opt/conda/etc/profile.d/mamba.sh && \
-      echo "activating env $RS_CONDAENV" && \
-      conda activate $RS_CONDAENV && \
       echo "starting RStudio Server" && \
       exec rserver "${@}"
