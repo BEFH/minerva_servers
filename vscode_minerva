@@ -61,7 +61,6 @@
 S_VERSION="0.8.1"
 
 # Script directory
-# old RS_SCRIPTDIR=$(pwd)
 S_SCRIPTDIR=$HOME
 
 # hostname of the cluster to connect to
@@ -87,8 +86,8 @@ S_SESSION=""
 # 2. Command line options overwrite defaults
 # 3. Config file options  overwrite command line options
 
-# Configuration file default    : $HOME/.rs_config
-S_CONFIG_FILE="$HOME/.rs_config"
+# Configuration file default    : $HOME/.vsc_config
+S_CONFIG_FILE="$HOME/.vsc_config"
 
 # Number of CPU cores default   : 4 CPU cores
 S_NUM_CPU=4
@@ -154,7 +153,7 @@ echodebug () {
 
 function display_help {
 cat <<-EOF
-$0: Script to start a RStudio server on Minerva from a local computer
+$0: Script to start a VSCode server on Minerva from a local computer
 
 Usage: $(basename "$0") [options]
 
@@ -171,7 +170,7 @@ Optional arguments:
                                       and minutes H[H[H]]:MM
   -m | --memory     4000             Memory limit in MB per core
   -R | --resource                    Extra resource request like "himem"
-  -c | --config     ~/.rs_config     Configuration file for specifying options
+  -c | --config     ~/.vsc_config    Configuration file for specifying options
   -h | --help                        Display help for this script and quit
   -i | --interval   30               Time interval (sec) for checking if the job
                                       on the cluster already started
@@ -181,11 +180,11 @@ Optional arguments:
                                       server name from .ssh/config, or e.g.
                                       user@minerva.hpc.mssm.edu
   -S | --session                     Session name to run multiple servers
-  -C | --conda      shell default    Conda env for running rstudio
-       --isolated   partial          Run RStudio server without home directory
+  -C | --conda      shell default    Conda env for running VSCode
+       --isolated   partial          Run VSCode server without home directory
                                       or environment variables (deprecated)
        --isolation  partial          Amount of container isolation: if 'full',
-                                      run RStudio server without home directory
+                                      run VSCode server without home directory
                                       or environment variables. If 'partial',
                                       same as full but open shell outside of
                                       sandbox. If 'none', do not isolate.
@@ -201,7 +200,7 @@ Examples:
 
   $(basename $0) --numcores 2 --runtime 01:30 --memory 2048
 
-  $(basename $0) -c $HOME/.rs_config
+  $(basename $0) -c $HOME/.vsc_config
 
 Format of configuration file:
 
@@ -242,7 +241,7 @@ while [[ $# -gt 0 ]]; do
     display_help
     ;;
     -v|--version)
-    echo -e "rstudio_minerva version: $S_VERSION\n"
+    echo -e "vscode_minerva version: $S_VERSION\n"
     exit
     ;;
     -n|--numcores)
@@ -340,7 +339,7 @@ if [[ $S_ISOLATED_CLASSIC -eq 1 ]]; then
     echoerror "Cannot use both --isolated and --isolation. Please try again\n"
     display_help
   fi
-  echowarn "The --isolated option is deprecated. RStudio is now mostly isolated"
+  echowarn "The --isolated option is deprecated. VSCode is now mostly isolated"
   echowarn "by default. Use --isolation to specify the amount of isolation."
   echowarn "The equivalent of --isolated is '--isolation full' and the old"
   echowarn "default is '--isolation none'."
@@ -432,7 +431,7 @@ echoinfo "Setting up directories and files"
 S_WORKDIR="/hpc/users/$S_USERNAME/minerva_jobs/code_container"
 S_TMP=/tmp/${S_USERNAME}${S_SESSION}_VSCode
 
-S_BASE_RECONNECT=".reconnect_info_rs$S_SESSION"
+S_BASE_RECONNECT=".reconnect_info_vsc$S_SESSION"
 S_FILE_RECONNECT="$S_WORKDIR/$S_BASE_RECONNECT"
 S_FILE_JOB="$S_WORKDIR/code$S_SESSION.lsf"
 S_FILE_IP="$S_WORKDIR/vscip$S_SESSION"
@@ -502,6 +501,11 @@ else
   fi
 fi
 
+if [[ $S_IMAGE == "default" ]]; then
+  S_IMAGE=$S_IMAGE_DEFAULT
+fi
+echodebug "Using image $S_IMAGE"
+
 ###############################################################################
 # Check for leftover files                                                    #
 ###############################################################################
@@ -531,6 +535,7 @@ echoinfo "Checking if reconnection is possible\n"
 
 if [ -z ${S_MANUAL_MULTIPLEX+x} ] && ! [[ "$S_HOSTNAME" == "minervarun" ]]; then
   scp $S_HOSTNAME:$S_FILE_RECONNECT $S_SCRIPTDIR/ &> /dev/null
+  echodebug "Downloaded reconnect_info file from $S_HOSTNAME:$S_FILE_RECONNECT"
 fi
 
 S_RCI=$S_SCRIPTDIR/$S_BASE_RECONNECT
@@ -761,7 +766,7 @@ elif ! echo "$S_BALANCE" | grep -q "$S_ACCT"; then
 fi
 
 ###############################################################################
-# Start rstudio server on the cluster                                         #
+# Start VSCode on the cluster                                                 #
 ###############################################################################
 
 echoinfo "Computing conda environment"
@@ -893,7 +898,7 @@ export no_proxy=localhost,*.chimera.hpc.mssm.edu,172.28.0.0/16
 
 SINGULARITY_SHELL=/bin/bash
 
-export XDG_RUNTIME_DIR="\$HOME/vsc_runtime"
+#export XDG_RUNTIME_DIR="\$HOME/vsc_runtime"
 S_IP_REMOTE="\$(hostname -i)"
 echo "Remote IP:\$S_IP_REMOTE" >> $S_FILE_IP
 
@@ -929,17 +934,19 @@ echo "Remote Port:\$S_PORT_REMOTE" >> $S_FILE_IP
 
 ## Start VSCode ##
 
-log_vscode="$RS_WORKDIR/vscode$S_SESSION_\$LSB_JOBID.vscode.log"
+# Set-up temporary paths
+mkdir -p $S_TMP/{home,tmp}
 
-echo "Starting rstudio service on port \$S_PORT_REMOTE ..."
+log_vscode="$S_WORKDIR/vscode$S_SESSION_\$LSB_JOBID.vscode.log"
+
+echo "Starting VSCode server on port \$S_PORT_REMOTE ..."
 singularity run \\
-  --bind $S_TMP/var-lib-rstudio-server:/var/lib/rstudio-server \\
   --bind /sys/fs/cgroup/:/sys/fs/cgroup/:ro \\
   --bind $SVSC_APP:/usr/local/bin/code \\
   --bind ${S_PREFIX}:${S_PREFIX} \\
   --bind $S_TMP/tmp:/tmp \\
   --bind /opt/hpc:/opt/hpc:ro \\
-  --app vscode \\
+  --app code \\
   --env S_CONDAENV=$S_CONDAENV \\
   --env USER=$S_USERNAME \\
   --cleanenv \\
@@ -990,7 +997,7 @@ fi
 
 S_CONTENTS_JOB+="$(cat <<EOF
 
-  $CODE_IMAGE serve-web --host \${S_IP_REMOTE} --port \$S_PORT_REMOTE \\
+  $S_IMAGE serve-web --host \${S_IP_REMOTE} --port \$S_PORT_REMOTE \\
   --accept-server-license-terms > \$log_vscode &
 
 echo VSCode started...
