@@ -436,6 +436,9 @@ S_FILE_RECONNECT="$S_WORKDIR/$S_BASE_RECONNECT"
 S_FILE_JOB="$S_WORKDIR/code$S_SESSION.lsf"
 S_FILE_IP="$S_WORKDIR/vscip$S_SESSION"
 S_FILE_BASHPROF="$S_WORKDIR/bash_profile$S_SESSION"
+S_FILE_BASHRC="$S_WORKDIR/bashrc$S_SESSION"
+S_FILE_FISHCONFIG="$S_WORKDIR/config$S_SESSION.fish"
+S_FILE_ZSHRC="$S_WORKDIR/zshrc$S_SESSION"
 SVSC_DIR_CONFIG="/hpc/users/$S_USERNAME/.config/CodeContainer"
 SVSC_APP="$S_WORKDIR/code"
 
@@ -823,39 +826,92 @@ minerva() {
 }
 alias ijob='conda deactivate; echo leaving sandbox; ssh -t li03c03 ijob'
 alias regjob='conda deactivate; echo leaving sandbox; ssh -t li03c03 regjob'
-PATH=\$(echo \$PATH |
-  awk -v RS=':' '!/conda/ { printf "%s%s", sep, \$0; sep = ":" }')
-LD_LIBRARY_PATH=\$(echo \$LD_LIBRARY_PATH |
-  awk -v RS=':' '!/conda/ { printf "%s%s", sep, \$0; sep = ":" }')
+alias ll='ls -l'
 EOF
 )
-if [[ $S_ISOLATED -lt 2 ]]; then
-  S_CONTENTS_BASHPROF+=$(cat <<EOF
 
-minerva
-EOF
-)
+S_CONTENTS_BASHRC=$(cat <<EOF
+# >>> conda initialize >>>
+# !! Contents within this block are managed by 'conda init' !!
+__conda_setup="\$('/opt/conda/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
+if [ \$? -eq 0 ]; then
+    eval "\$__conda_setup"
+else
+    if [ -f "/opt/conda/etc/profile.d/conda.sh" ]; then
+        . "/opt/conda/etc/profile.d/conda.sh"
+    else
+        export PATH="/opt/conda/bin:\$PATH"
+    fi
 fi
+unset __conda_setup
 
-S_CONTENTS_BASHPROF+=$(cat <<EOF
-
-. /opt/conda/etc/profile.d/conda.sh && \\
-. /opt/conda/etc/profile.d/mamba.sh && \\
-alias ll='ls -l' && \
-mamba activate $S_CONDAENV
-export http_proxy=http://172.28.7.1:3128
-export https_proxy=http://172.28.7.1:3128
-export ftp_proxy=http://172.28.7.1:3128
-export rsync_proxy=http://172.28.7.1:3128
-export all_proxy=http://172.28.7.1:3128
-export no_proxy=localhost,*.chimera.hpc.mssm.edu,172.28.0.0/16
+if [ -f "/opt/conda/etc/profile.d/mamba.sh" ]; then
+    . "/opt/conda/etc/profile.d/mamba.sh"
+fi
+# <<< conda initialize <<<
 EOF
 )
 
-echodebug "Bash profile contents:"
-if [[ $S_DEBUG -eq 1 ]]; then
-  echo "$S_CONTENTS_BASHPROF"
+S_CONTENTS_FISHCONFIG=$(cat <<EOF
+if status is-interactive
+    # Commands to run in interactive sessions can go here
+end
+
+# >>> conda initialize >>>
+# !! Contents within this block are managed by 'conda init' !!
+if test -f /opt/conda/bin/conda
+    eval /opt/conda/bin/conda "shell.fish" "hook" \$argv | source
+else
+    if test -f "/opt/conda/etc/fish/conf.d/conda.fish"
+        . "/opt/conda/etc/fish/conf.d/conda.fish"
+    else
+        set -x PATH "/opt/conda/bin" \$PATH
+    end
+end
+
+if test -f "/opt/conda/etc/fish/conf.d/mamba.fish"
+    source "/opt/conda/etc/fish/conf.d/mamba.fish"
+end
+# <<< conda initialize <<<
+function minerva
+  ssh -o StrictHostKeyChecking=accept-new -t (hostname)
+    "conda activate $S_CONDAENV; ml proxies; cd \$PWD; \\\$SHELL"
+end
+
+alias ijob 'conda deactivate; echo "leaving sandbox"; ssh -t li03c03 ijob'
+alias regjob 'conda deactivate; echo "leaving sandbox"; ssh -t li03c03 regjob'
+EOF
+)
+
+S_CONTENTS_ZSHRC=$(cat <<EOF
+# >>> conda initialize >>>
+# !! Contents within this block are managed by 'conda init' !!
+__conda_setup="\$('/opt/conda/bin/conda' 'shell.zsh' 'hook' 2> /dev/null)"
+if [ \$? -eq 0 ]; then
+    eval "$__conda_setup"
+else
+    if [ -f "/opt/conda/etc/profile.d/conda.sh" ]; then
+        . "/opt/conda/etc/profile.d/conda.sh"
+    else
+        export PATH="/opt/conda/bin:\$PATH"
+    fi
 fi
+unset __conda_setup
+
+if [ -f "/opt/conda/etc/profile.d/mamba.sh" ]; then
+    . "/opt/conda/etc/profile.d/mamba.sh"
+fi
+# <<< conda initialize <<<
+
+minerva() {
+  ssh -o StrictHostKeyChecking=accept-new -t \$(hostname -f) \\
+    "conda activate $S_CONDAENV; ml proxies; cd \$PWD; \\\$SHELL"
+}
+alias ijob='conda deactivate; echo leaving sandbox; ssh -t li03c03 ijob'
+alias regjob='conda deactivate; echo leaving sandbox; ssh -t li03c03 regjob'
+alias ll='ls -l'
+EOF
+)
 
 echoinfo "Building LSF jobscript"
 
@@ -983,6 +1039,9 @@ if [[ $S_ISOLATED -gt 0 ]]; then
   --bind $S_TMP/home:/myhome \\
   --bind $SVSC_DIR_CONFIG:/myhome/.config/Code \\
   --bind $S_FILE_BASHPROF:/myhome/.bash_profile \\
+  --bind $S_FILE_BASHRC:/myhome/.bashrc \\
+  --bind $S_FILE_FISHCONFIG:/myhome/.config/fish/config.fish \\
+  --bind $S_FILE_ZSHRC:/myhome/.zshrc \\
   --bind \$HOME/.ssh:/myhome/.ssh \\
 EOF
 )"
@@ -990,6 +1049,9 @@ else
   S_CONTENTS_JOB+="$(cat <<EOF
 
   --bind $S_FILE_BASHPROF:/hpc/users/$S_USERNAME/.bash_profile \\
+  --bind $S_FILE_BASHRC:/hpc/users/$S_USERNAME/.bashrc \\
+  --bind $S_FILE_FISHCONFIG:/hpc/users/$S_USERNAME/.config/fish/config.fish \\
+  --bind $S_FILE_ZSHRC:/hpc/users/$S_USERNAME/.zshrc \\
   --bind $SVSC_DIR_CONFIG:/hpc/users/$S_USERNAME/.config/Code \\
 EOF
 )"
@@ -998,7 +1060,8 @@ fi
 S_CONTENTS_JOB+="$(cat <<EOF
 
   $S_IMAGE serve-web --host \${S_IP_REMOTE} --port \$S_PORT_REMOTE \\
-  --accept-server-license-terms > \$log_vscode &
+  --user-data-dir ~/.config/Code/User --accept-server-license-terms \\
+  --log $VSC_LOG_LEVEL > \$log_vscode &
 
 echo VSCode started...
 
@@ -1010,11 +1073,7 @@ sing_stat=\$?
 if [[ "$S_DEBUG" -eq 1 ]]; then
   /usr/bin/env > $S_WORKDIR/jobenv$S_SESSION.txt
 fi
-
-echo Writing log to \$log_vscode 
-token=\$(grep "Web UI available" \$log_vscode | sed 's/.*?tkn=//')
-echo "Token:\$token" >> $S_FILE_IP
-echo Server Token: \$token
+echo Writing log to \$log_vscode
 
 for i in {3..1}; do
   echo "Checking \$i, next check in 5 seconds."
@@ -1033,6 +1092,9 @@ if [[ \$sing_stat -ne "0" ]]; then
   exit 1
 else
   echo "Status:GOOD" >> $S_FILE_IP
+  token=\$(cat $S_TMP/home/.vscode/cli/serve-web-token)
+  echo "Token:\$token" >> $S_FILE_IP
+  echo Server Token: \$token
 fi
 
 cleanup () {
@@ -1060,16 +1122,22 @@ fi
 
 if [[ $S_HOSTNAME == "minervarun" ]]; then
   # Store the docstring in $S_FILE_LOGCONF locally
-  echodebug "Locally copying bashprof and job files on minerva"
+  echodebug "Locally copying config and job files on minerva"
   echo "$S_CONTENTS_BASHPROF" > "$S_FILE_BASHPROF"
+  echo "$S_CONTENTS_BASHRC" > "$S_FILE_BASHRC"
+  echo "$S_CONTENTS_FISHCONFIG" > "$S_FILE_FISHCONFIG"
+  echo "$S_CONTENTS_ZSHRC" > "$S_FILE_ZSHRC"
   echo "$S_CONTENTS_JOB" > "$S_FILE_JOB"
 else
   # Copy the docstring to $S_FILE_LOGCONF remotely
-  echodebug "Copying bashprof and job files to $S_HOSTNAME"
+  echodebug "Copying config and job files to $S_HOSTNAME"
   ssh -T $S_HOSTNAME "cat > '$S_FILE_BASHPROF'" <<< "$S_CONTENTS_BASHPROF"
+  ssh -T $S_HOSTNAME "cat > '$S_FILE_BASHRC'" <<< "$S_CONTENTS_BASHRC"
+  ssh -T $S_HOSTNAME "cat > '$S_FILE_FISHCONFIG'" <<< "$S_CONTENTS_FISHCONFIG"
+  ssh -T $S_HOSTNAME "cat > '$S_FILE_ZSHRC'" <<< "$S_CONTENTS_ZSHRC"
   ssh -T $S_HOSTNAME "cat > '$S_FILE_JOB'" <<< "$S_CONTENTS_JOB"
 fi
-echodebug "Done copying bashprof and job files"
+echodebug "Done copying config and job files"
 
 TRY=1
 SUCCESS=0
@@ -1145,7 +1213,7 @@ ENDSSH
     echoinfo "Receiving ip and port from the server"
     S_REMOTE_IP=$(echo "$S_CONTENTS_IP" | grep -m1 'Remote IP' | cut -d ':' -f 2)
     S_REMOTE_PORT=$(echo "$S_CONTENTS_IP" | grep -m1 'Remote Port' | cut -d ':' -f 2)
-    S_REMOTE_TOKEN=$(echo "$ipfile" | grep -m1 'Token' | cut -d ':' -f2)
+    S_REMOTE_TOKEN=$(echo "$S_CONTENTS_IP" | grep -m1 'Token' | cut -d ':' -f 2)
     SUCCESS=1
   elif [[ $S_REMOTE_STATUS == "BUSY" ]]; then
     hostname=$(echo "$S_CONTENTS_IP" | grep -m1 'HOSTNAME' | cut -d ':' -f 2)
