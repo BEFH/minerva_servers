@@ -32,3 +32,4 @@ From: alpine/alpine:latest
       conda activate $S_CONDAENV && \
       echo "starting server" && \
       exec code "${@}"
+
