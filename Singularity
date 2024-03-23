@@ -4,7 +4,7 @@ From: alpine:latest
 %post
     apk update && \
     apk add --no-cache bash wget less openssh exa fish zsh curl
-    wget -O Miniforge3.sh "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh" && \
+    wget -O Miniforge3.sh "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh" && \
     bash Miniforge3.sh -b -p /opt/conda && \
     rm Miniforge3.sh && \
     echo "done"
