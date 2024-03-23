@@ -1,5 +1,5 @@
 Bootstrap: docker
-From: alpine/alpine:latest
+From: alpine:latest
 
 %post
     apk update && \
