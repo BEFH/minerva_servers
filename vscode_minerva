@@ -2,7 +2,7 @@
 
 ###############################################################################
 #                                                                             #
-#  Script to run on a local computer to start a RStudio server on Minerva and #
+#  Script to run on a local computer to start a VSCode server on Minerva and  #
 #  connect to it with a local browser                                         #
 #                                                                             #
 #  Main author     : Brian Fulton-Howard                                      #
@@ -186,9 +186,9 @@ Optional arguments:
                                       user@minerva.hpc.mssm.edu
   -S | --session                     Session name to run multiple servers
   -C | --conda      shell default    Conda env for running VSCode
-       --isolated   partial          Run VSCode server without home directory
+       --isolated   none             Run VSCode server without home directory
                                       or environment variables (deprecated)
-       --isolation  partial          Amount of container isolation: if 'full',
+       --isolation  none             Amount of container isolation: if 'full',
                                       run VSCode server without home directory
                                       or environment variables. If 'partial',
                                       same as full but open shell outside of
@@ -358,8 +358,8 @@ if [[ $S_ISOLATED_CLASSIC -eq 1 ]]; then
 fi
 
 if [ -z ${S_ISOLATED+x} ]; then
-  S_ISOLATED=1
-  echoinfo "Running with default partial container isolation"
+  S_ISOLATED=0
+  echoinfo "Running with default no container isolation"
 elif [[ $S_ISOLATED -eq 0 ]]; then
   echoinfo "Running without container isolation"
 elif [[ $S_ISOLATED -eq 1 ]]; then
@@ -663,7 +663,7 @@ if [ -f $S_RCI ]; then
     if [[ "$OSTYPE" =~ ^linux-gnu|darwin|msys ]]; then
       echoinfo "Connecting to the server"
       lsof -i :$RC_PRT > /dev/null || $RC_SSH
-    else:
+    else
       S_OPEN_BROWSER=0
       echowarn "Your OS does not allow starting browsers automatically."
       echoinfo "Please open $RC_URL in your browser."
@@ -1157,7 +1157,6 @@ singularity run \\
   --app code \\
   --env S_CONDAENV=$S_CONDAENV \\
   --env USER=$S_USERNAME \\
-  --cleanenv \\
 EOF
 )
 
@@ -1186,6 +1185,7 @@ fi
 if [[ $S_ISOLATED -gt 0 ]]; then
   S_CONTENTS_JOB+="$(cat <<EOF
 
+  --cleanenv \\
   --no-home \\
   --home $S_TMP/home:/myhome \\
   --bind $S_TMP/home:/myhome \\
@@ -1208,6 +1208,7 @@ else
   --bind $S_FILE_BASHRC:/hpc/users/$S_USERNAME/.bashrc \\
   --bind $S_FILE_FISHCONFIG:/hpc/users/$S_USERNAME/.config/fish/config.fish \\
   --bind $S_FILE_ZSHRC:/hpc/users/$S_USERNAME/.zshrc \\
+  --bind /usr/share/lmod:/usr/share/lmod:ro \\
   --bind $SVSC_DIR_CONFIG_DOTVSC:/hpc/users/$S_USERNAME/.vscode-server \\
   --bind $S_WORKDIR/.setup_vscode.sh:/hpc/users/$S_USERNAME/.setup_vscode.sh \\
   --bind $S_WORKDIR/.recommended_packages.txt:/hpc/users/$S_USERNAME/.recommended_packages.txt \\
@@ -1251,7 +1252,11 @@ if [[ \$sing_stat -ne "0" ]]; then
   exit 1
 else
   echo "Status:GOOD" >> $S_FILE_IP
-  token=\$(cat $S_TMP/home/.vscode/cli/serve-web-token)
+  if [[ $S_ISOLATED -gt 0 ]]; then
+    token=\$(cat $S_TMP/home/.vscode/cli/serve-web-token)
+  else
+    token=\$(cat /hpc/users/\$USER/.vscode/cli/serve-web-token)
+  fi
   echo "Token:\$token" >> $S_FILE_IP
   echo Server Token: \$token
 fi
