@@ -11,9 +11,10 @@
 #                  : Andreas Lugmayr, Mike Boss                               #
 #  Date            : October 2021                                             #
 #  Location        : Mount Sinai (originally ETH Zurich)                      #
-#  Version         : 0.8.2                                                    #
+#  Version         : 0.8.3                                                    #
 #  Change history  :                                                          #
 #                                                                             #
+#  24.03.2024    Adapt to run vscode server in a container environment        #
 #  21.03.2024    Isolation by default without isolation in terminal           #
 #  20.03.2024    Only log at debug level in Rstudio if --debug; Allow use     #
 #                of Github Copilot                                            #
@@ -58,7 +59,7 @@
 ###############################################################################
 
 # Version
-S_VERSION="0.8.1"
+S_VERSION="0.8.3"
 
 # Script directory
 S_SCRIPTDIR=$HOME
@@ -116,6 +117,9 @@ S_DEBUG=0
 # Update vscode server
 S_UPDATE=0
 
+# Do not open browser by default
+S_OPEN_BROWSER=0
+
 ###############################################################################
 # Text coloring                                                               #
 ###############################################################################
@@ -170,6 +174,7 @@ Optional arguments:
                                       and minutes H[H[H]]:MM
   -m | --memory     4000             Memory limit in MB per core
   -R | --resource                    Extra resource request like "himem"
+  -b | --browser                     Open browser automatically
   -c | --config     ~/.vsc_config    Configuration file for specifying options
   -h | --help                        Display help for this script and quit
   -i | --interval   30               Time interval (sec) for checking if the job
@@ -316,6 +321,10 @@ while [[ $# -gt 0 ]]; do
     S_DEBUG=1
     shift
     ;;
+    -b|--browser)
+    S_OPEN_BROWSER=1
+    shift
+    ;;
     --update)
     S_UPDATE=1
     shift
@@ -457,7 +466,6 @@ fi
 if [[ ! -d $SVSC_DIR_CONFIG ]]; then
   echo $(echoinfo "Creating config directory and files")
   mkdir -p $SVSC_DIR_CONFIG
-  #TODO: add config files
 fi
 if [[ ! -d $SVSC_DIR_CONFIG_DOTVSC ]]; then
   echo $(echoinfo "Creating config directory and files")
@@ -529,13 +537,13 @@ if [[ ! -f $S_WORKDIR/.setup_vscode.sh ]] || [[ $S_UPDATE -eq 1 ]]; then
 #!/usr/bin/env bash
 echo "Installing recommended extensions"
 while read -r line; do
-  code --install-extension "\$line"
+  code --install-extension "\\\$line"
 done < ~/.recommended_packages.txt
 
 echo "To set up the configuration for VSCode, open the command palette with"
 echo "Cmd+Shift+P and type Preferences: Open User Settings JSON"
 echo "Then copy and paste the following:"
-cat ~/config_template.json
+cat ~/.config_template.json
 EOFF
   chmod +x $S_WORKDIR/.setup_vscode.sh
 fi
@@ -638,6 +646,12 @@ if [ -f $S_RCI ]; then
     cat $S_RCI
     echo
 
+    RC_URL=$(sed -nE 's/^URL[a-zA-Z ]+: (.+)/\1/p' $S_RCI)
+    RC_PRT_REMOTE=$(sed -nE 's/^Remote port +: (.+)/\1/p' $S_RCI)
+    RC_IP_REMOTE=$(sed -nE 's/^Remote IP address +: (.+)/\1/p' $S_RCI)
+    RC_PRT=$(sed -nE 's/^Local[a-zA-Z ]+: (.+)/\1/p' $S_RCI)
+    RC_SSH="ssh $S_HOSTNAME -L $RC_PRT:$RC_IP_REMOTE:$RC_PRT_REMOTE -fNT"
+
     if [[ "$S_HOSTNAME" == "minervarun" ]]; then
       S_FWDCMD=$(sed -nE 's/^SSH tunnel +: (.+)/\1/p' $S_RCI)
       S_TOKEN=$(sed -nE 's/^Remote token[a-zA-Z ]+: (.+)/\1/p' $S_RCI)
@@ -645,38 +659,36 @@ if [ -f $S_RCI ]; then
       exit 0
     fi
 
-    RC_PRT_REMOTE=$(sed -nE 's/^Remote port +: (.+)/\1/p' $S_RCI)
-    RC_IP_REMOTE=$(sed -nE 's/^Remote IP address +: (.+)/\1/p' $S_RCI)
-    RC_URL=$(sed -nE 's/^URL[a-zA-Z ]+: (.+)/\1/p' $S_RCI)
-    RC_PRT=$(sed -nE 's/^Local[a-zA-Z ]+: (.+)/\1/p' $S_RCI)
-    RC_SSH="ssh $S_HOSTNAME -L $RC_PRT:$RC_IP_REMOTE:$RC_PRT_REMOTE -fNT"
-
-    echoinfo "Starting browser and connecting it to the server"
-    echoinfo "Connecting to url $RC_URL"
-
-    # start local browser if possible
-    if [[ "$OSTYPE" == "linux-gnu" ]]; then
+    # reconnect if linux-gnu, darwin, or msys (regex check)
+    if [[ "$OSTYPE" =~ ^linux-gnu|darwin|msys ]]; then
+      echoinfo "Connecting to the server"
       lsof -i :$RC_PRT > /dev/null || $RC_SSH
-      if which wlslview 2>1 > /dev/null; then
-        wslview $S_URL # USING Windows Subsystem for Linux
-      elif ! [ -z ${WSLENV+x} ]; then
-        echoalert "Your are using Windows Subsystem for Linux, but wslu is not "
-        echoalert "available.\n"
-        echoalert "Install wslu for automatic browser opening.\n"
-        echoinfo "Please open $RC_URL in your browser."
-      else
-        xdg-open $RC_URL
-      fi
-    elif [[ "$OSTYPE" == "darwin"* ]]; then
-      lsof -i :$RC_PRT > /dev/null || $RC_SSH
-      macos_open $RC_PRT
-    elif [[ "$OSTYPE" == "msys" ]]; then # Git Bash on Windows 10
-      lsof -i :$RC_PRT > /dev/null || $RC_SSH # Don't know if this works
-      start $RC_URL
-    else
+    else:
+      S_OPEN_BROWSER=0
       echowarn "Your OS does not allow starting browsers automatically."
       echoinfo "Please open $RC_URL in your browser."
       echoinfo "check if port $RC_PRT is forwarded first."
+    fi
+
+    if [[ $S_OPEN_BROWSER -eq 1 ]]; then
+      echoinfo "Starting browser and connecting it to the server"
+      echoinfo "Connecting to url $RC_URL"
+      if [[ "$OSTYPE" == "linux-gnu" ]]; then
+        if which wlslview 2>1 > /dev/null; then
+          wslview $S_URL # USING Windows Subsystem for Linux
+        elif ! [ -z ${WSLENV+x} ]; then
+          echoalert "Your are using Windows Subsystem for Linux,"
+          echoalert "but wslu is not available.\n"
+          echoalert "Install wslu for automatic browser opening.\n"
+          echoinfo "Please open $RC_URL in your browser."
+        else
+          xdg-open $RC_URL
+        fi
+      elif [[ "$OSTYPE" == "darwin"* ]]; then
+        macos_open $RC_PRT
+      elif [[ "$OSTYPE" == "msys" ]]; then
+        start $RC_URL
+      fi
     fi
     exit 0
   else
@@ -729,7 +741,7 @@ fi
 
 # check if S_NUM_CPU is <= 64
 if [ "$S_NUM_CPU" -gt "64" ]; then
-  echoerror "$S_NUM_CPU -> Larger than 64. No distributed memory supported, therefore the number of CPU cores needs to be smaller or equal to 128\n"
+  echoerror "$S_NUM_CPU -> Larger than 64. No distributed memory supported, therefore the number of CPU cores needs to be smaller or equal to 64\n"
   display_help
 fi
 
@@ -916,12 +928,13 @@ minerva() {
 alias ijob='conda deactivate; echo leaving sandbox; ssh -t li03c03 ijob'
 alias regjob='conda deactivate; echo leaving sandbox; ssh -t li03c03 regjob'
 alias ll='ls -l'
-if [[ \$(ls -1 ~/.vscode-server/extensions/ | wc -l) -lt 4 ]]; then
-  echo To install recommended VSCode extensions and display instructions for
-  echo configuring VSCode, please run ~/.setup_vscode.sh
-fi
 EOF
 )
+
+# if ! [[ -d ~/.vscode-server/extensions/ ]] || [[ \$(ls -1 ~/.vscode-server/extensions/ | wc -l) -lt 4 ]]; then
+#   echo To install recommended VSCode extensions and display instructions for
+#   echo configuring VSCode, please run ~/.setup_vscode.sh
+# fi
 
 S_CONTENTS_BASHRC=$(cat <<EOF
 # >>> conda initialize >>>
@@ -945,6 +958,16 @@ fi
 EOF
 )
 
+# if test -d ~/.vscode-server/extensions/
+#   set vsc_numext (ls -1 ~/.vscode-server/extensions/ | wc -l)
+# else
+#   set vsc_numext 0
+# end
+# if test \$vsc_numext -lt 4
+#   echo To install recommended VSCode extensions and display instructions for
+#   echo configuring VSCode, please run ~/.setup_vscode.sh
+# end
+
 S_CONTENTS_FISHCONFIG=$(cat <<EOF
 if status is-interactive
     # Commands to run in interactive sessions can go here
@@ -967,7 +990,7 @@ if test -f "/opt/conda/etc/fish/conf.d/mamba.fish"
 end
 # <<< conda initialize <<<
 function minerva
-  if test [[ \$PWD -eq "/myhome" ]]
+  if test \$PWD = "/myhome"
     set minervadir '\$HOME'
   else
     set minervadir \$PWD
@@ -979,11 +1002,6 @@ end
 
 alias ijob 'conda deactivate; echo "leaving sandbox"; ssh -t li03c03 ijob'
 alias regjob 'conda deactivate; echo "leaving sandbox"; ssh -t li03c03 regjob'
-set vsc_numext (ls -1 ~/.vscode-server/extensions/ | wc -l)
-if test \$vsc_numext -lt 4
-  echo To install recommended VSCode extensions and display instructions for
-  echo configuring VSCode, please run ~/.setup_vscode.sh
-end
 EOF
 )
 
@@ -1023,10 +1041,6 @@ minerva() {
 alias ijob='conda deactivate; echo leaving sandbox; ssh -t li03c03 ijob'
 alias regjob='conda deactivate; echo leaving sandbox; ssh -t li03c03 regjob'
 alias ll='ls -l'
-if [[ \$(ls -1 ~/.vscode-server/extensions/ | wc -l) -lt 4 ]]; then
-  echo To install recommended VSCode extensions and display instructions for
-  echo configuring VSCode, please run ~/.setup_vscode.sh
-fi
 EOF
 )
 
@@ -1108,6 +1122,9 @@ echo "Remote Port:\$S_PORT_REMOTE" >> $S_FILE_IP
 ## Start VSCode ##
 
 # Set-up temporary paths
+if [[ -d $S_TMP ]]; then
+  rm -rf $S_TMP/*
+fi
 mkdir -p $S_TMP/{home,tmp}
 
 cat > $S_TMP/home/.launch_radian.sh <<EOFF
@@ -1172,7 +1189,6 @@ if [[ $S_ISOLATED -gt 0 ]]; then
   --no-home \\
   --home $S_TMP/home:/myhome \\
   --bind $S_TMP/home:/myhome \\
-  --bind $SVSC_DIR_CONFIG:/myhome/.config/Code \\
   --bind $SVSC_DIR_CONFIG_DOTVSC:/myhome/.vscode-server \\
   --bind $S_FILE_BASHPROF:/myhome/.bash_profile \\
   --bind $S_FILE_BASHRC:/myhome/.bashrc \\
@@ -1181,7 +1197,8 @@ if [[ $S_ISOLATED -gt 0 ]]; then
   --bind \$HOME/.ssh:/myhome/.ssh \\
   --bind $S_WORKDIR/.setup_vscode.sh:/myhome/.setup_vscode.sh \\
   --bind $S_WORKDIR/.recommended_packages.txt:/myhome/.recommended_packages.txt \\
-  --bind $S_WORKDIR/config_template.json:/myhome/.config_template.json \\
+  --bind $S_WORKDIR/.config_template.json:/myhome/.config_template.json \\
+  --bind \$HOME/.gitconfig:/myhome/.gitconfig \\
 EOF
 )"
 else
@@ -1191,11 +1208,10 @@ else
   --bind $S_FILE_BASHRC:/hpc/users/$S_USERNAME/.bashrc \\
   --bind $S_FILE_FISHCONFIG:/hpc/users/$S_USERNAME/.config/fish/config.fish \\
   --bind $S_FILE_ZSHRC:/hpc/users/$S_USERNAME/.zshrc \\
-  --bind $SVSC_DIR_CONFIG:/hpc/users/$S_USERNAME/.config/Code \\
   --bind $SVSC_DIR_CONFIG_DOTVSC:/hpc/users/$S_USERNAME/.vscode-server \\
   --bind $S_WORKDIR/.setup_vscode.sh:/hpc/users/$S_USERNAME/.setup_vscode.sh \\
   --bind $S_WORKDIR/.recommended_packages.txt:/hpc/users/$S_USERNAME/.recommended_packages.txt \\
-  --bind $S_WORKDIR/config_template.json:/hpc/users/$S_USERNAME/.config_template.json \\
+  --bind $S_WORKDIR/.config_template.json:/hpc/users/$S_USERNAME/.config_template.json \\
 EOF
 )"
 fi
@@ -1460,6 +1476,9 @@ fi
 
 if [[ $S_HOSTNAME == "minervarun" ]]; then
   instructs_mrun
+elif [[ $S_OPEN_BROWSER -eq 0 ]]; then
+  echoinfo "Please open the following URL in your browser:"
+  echoinfo "http://localhost:$S_LOCAL_PORT?tkn=$S_REMOTE_TOKEN"
 else
   # save url in variable
   S_URL=http://localhost:$S_LOCAL_PORT
