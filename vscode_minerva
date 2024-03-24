@@ -440,6 +440,7 @@ S_FILE_BASHRC="$S_WORKDIR/bashrc$S_SESSION"
 S_FILE_FISHCONFIG="$S_WORKDIR/config$S_SESSION.fish"
 S_FILE_ZSHRC="$S_WORKDIR/zshrc$S_SESSION"
 SVSC_DIR_CONFIG="/hpc/users/$S_USERNAME/.config/CodeContainer"
+SVSC_DIR_CONFIG_DOTVSC="$S_WORKDIR/serverconf"
 SVSC_APP="$S_WORKDIR/code"
 
 ###############################################################################
@@ -458,9 +459,89 @@ if [[ ! -d $SVSC_DIR_CONFIG ]]; then
   mkdir -p $SVSC_DIR_CONFIG
   #TODO: add config files
 fi
+if [[ ! -d $SVSC_DIR_CONFIG_DOTVSC ]]; then
+  echo $(echoinfo "Creating config directory and files")
+  mkdir -p $SVSC_DIR_CONFIG_DOTVSC
+fi
+if [[ ! -f $S_WORKDIR/.config_template.json ]] || [[ $S_UPDATE -eq 1 ]]; then
+  echo $(echoinfo "Creating config template file")
+  cat <<EOFF > $S_WORKDIR/.config_template.json
+{
+    "terminal.integrated.profiles.linux": {
+        "bash": {
+            "path": "bash",
+            "icon": "terminal-bash",
+            "args": ["-c", ". ~/.bashrc; . ~/.bash_profile; bash"]
+        },
+        "bash-minerva": {
+            "path": "bash",
+            "icon": "terminal-bash",
+            "args": ["-c", ". ~/.bash_profile; minerva"]
+        },
+        "zsh-minerva": {
+            "path": "zsh",
+            "args": ["-c", ". ~/.zshrc; minerva"]
+        },
+        "fish": {
+            "path": "fish"
+        },
+        "fish-minerva": {
+            "path": "fish",
+            "args": ["-c", "minerva"]
+        }
+    },
+    "window.menuBarVisibility": "visible",
+    "terminal.integrated.persistentSessionScrollback": 10000,
+    "terminal.integrated.scrollback": 100000,
+    "r.bracketedPaste": true,
+    "r.rpath.linux": "/myhome/.launch_r.sh",
+    "r.rterm.linux": "/myhome/.launch_radian.sh",
+    "r.rterm.option": []
+}
+EOFF
+fi
+if [[ ! -f $S_WORKDIR/.recommended_packages.txt ]] || [[ $S_UPDATE -eq 1 ]]; then
+  echo $(echoinfo "Creating recommended packages file")
+  cat <<EOFF > $S_WORKDIR/.recommended_packages.txt
+formulahendry.code-runner
+REditorSupport.R
+janisdd.vscode-edit-csv
+grapecity.gc-excelviewer
+yzhang.markdown-all-in-one
+ms-python.python
+ms-toolsai.jupyter
+quarto.quarto
+snakemake.snakemake-lang
+vscode-icons-team.vscode-icons
+donjayamanne.python-environment-manager
+pnp.polacode
+ms-vsliveshare.vsliveshare
+github.remotehub
+donjayamanne.githistory
+ms-toolsai.datawrangler
+kamikillerto.vscode-colorize
+onnovalkering.vscode-singularity
+EOFF
+fi
+if [[ ! -f $S_WORKDIR/.setup_vscode.sh ]] || [[ $S_UPDATE -eq 1 ]]; then
+  echo $(echoinfo "Creating setup script")
+  cat <<EOFF > $S_WORKDIR/.setup_vscode.sh
+#!/usr/bin/env bash
+echo "Installing recommended extensions"
+while read -r line; do
+  code --install-extension "\$line"
+done < ~/.recommended_packages.txt
+
+echo "To set up the configuration for VSCode, open the command palette with"
+echo "Cmd+Shift+P and type Preferences: Open User Settings JSON"
+echo "Then copy and paste the following:"
+cat ~/config_template.json
+EOFF
+  chmod +x $S_WORKDIR/.setup_vscode.sh
+fi
 EOF
 )
-
+#
 if [[ "$S_HOSTNAME" == "minervarun" ]]; then
   eval "$S_CONTENTS_MKDIRS"
 else
@@ -820,13 +901,25 @@ if [[ $S_DEBUG -eq 1 ]]; then
 fi
 
 S_CONTENTS_BASHPROF=$(cat <<EOF
+# Set prompt to standard bash prompt instead of the one from the image
+PS1='\u@\h:\w\$ '
 minerva() {
+  if [[ \$PWD == "/myhome" ]]; then
+    minervadir='\$HOME'
+  else
+    minervadir=\$PWD
+  fi
   ssh -o StrictHostKeyChecking=accept-new -t \$(hostname -f) \\
-    "conda activate $S_CONDAENV; ml proxies; cd \$PWD; \\\$SHELL"
+    "conda activate $S_CONDAENV; ml proxies; cd \$minervadir; bash"
+  exit 0
 }
 alias ijob='conda deactivate; echo leaving sandbox; ssh -t li03c03 ijob'
 alias regjob='conda deactivate; echo leaving sandbox; ssh -t li03c03 regjob'
 alias ll='ls -l'
+if [[ \$(ls -1 ~/.vscode-server/extensions/ | wc -l) -lt 4 ]]; then
+  echo To install recommended VSCode extensions and display instructions for
+  echo configuring VSCode, please run ~/.setup_vscode.sh
+fi
 EOF
 )
 
@@ -874,16 +967,30 @@ if test -f "/opt/conda/etc/fish/conf.d/mamba.fish"
 end
 # <<< conda initialize <<<
 function minerva
-  ssh -o StrictHostKeyChecking=accept-new -t (hostname)
-    "conda activate $S_CONDAENV; ml proxies; cd \$PWD; \\\$SHELL"
+  if test [[ \$PWD -eq "/myhome" ]]
+    set minervadir '\$HOME'
+  else
+    set minervadir \$PWD
+  end
+  ssh -o StrictHostKeyChecking=accept-new -t (hostname) \\
+    "conda activate $S_CONDAENV; ml proxies; cd \$minervadir; fish"
+  exit 0
 end
 
 alias ijob 'conda deactivate; echo "leaving sandbox"; ssh -t li03c03 ijob'
 alias regjob 'conda deactivate; echo "leaving sandbox"; ssh -t li03c03 regjob'
+set vsc_numext (ls -1 ~/.vscode-server/extensions/ | wc -l)
+if test \$vsc_numext -lt 4
+  echo To install recommended VSCode extensions and display instructions for
+  echo configuring VSCode, please run ~/.setup_vscode.sh
+end
 EOF
 )
 
 S_CONTENTS_ZSHRC=$(cat <<EOF
+# Set prompt to standard zsh prompt instead of the one from the image
+PROMPT='%n@%m:%~%# '
+
 # >>> conda initialize >>>
 # !! Contents within this block are managed by 'conda init' !!
 __conda_setup="\$('/opt/conda/bin/conda' 'shell.zsh' 'hook' 2> /dev/null)"
@@ -904,12 +1011,22 @@ fi
 # <<< conda initialize <<<
 
 minerva() {
+  if [[ \$PWD == "/myhome" ]]; then
+    minervadir='\$HOME'
+  else
+    minervadir=\$PWD
+  fi
   ssh -o StrictHostKeyChecking=accept-new -t \$(hostname -f) \\
-    "conda activate $S_CONDAENV; ml proxies; cd \$PWD; \\\$SHELL"
+    "conda activate $S_CONDAENV; ml proxies; cd \$minervadir; zsh"
+  exit 0
 }
 alias ijob='conda deactivate; echo leaving sandbox; ssh -t li03c03 ijob'
 alias regjob='conda deactivate; echo leaving sandbox; ssh -t li03c03 regjob'
 alias ll='ls -l'
+if [[ \$(ls -1 ~/.vscode-server/extensions/ | wc -l) -lt 4 ]]; then
+  echo To install recommended VSCode extensions and display instructions for
+  echo configuring VSCode, please run ~/.setup_vscode.sh
+fi
 EOF
 )
 
@@ -993,6 +1110,24 @@ echo "Remote Port:\$S_PORT_REMOTE" >> $S_FILE_IP
 # Set-up temporary paths
 mkdir -p $S_TMP/{home,tmp}
 
+cat > $S_TMP/home/.launch_radian.sh <<EOFF
+#!/usr/bin/env bash
+if which radian > /dev/null; then
+  LC_ALL=C.UTF-8 radian
+else
+  LC_ALL=C.UTF-8 R
+fi
+
+exit 0
+EOFF
+chmod +x $S_TMP/home/.launch_radian.sh
+
+cat > $S_TMP/home/.launch_r.sh <<EOFF
+#!/usr/bin/env bash
+LC_ALL=C.UTF-8 R
+EOFF
+chmod +x $S_TMP/home/.launch_r.sh
+
 log_vscode="$S_WORKDIR/vscode$S_SESSION_\$LSB_JOBID.vscode.log"
 
 echo "Starting VSCode server on port \$S_PORT_REMOTE ..."
@@ -1038,11 +1173,15 @@ if [[ $S_ISOLATED -gt 0 ]]; then
   --home $S_TMP/home:/myhome \\
   --bind $S_TMP/home:/myhome \\
   --bind $SVSC_DIR_CONFIG:/myhome/.config/Code \\
+  --bind $SVSC_DIR_CONFIG_DOTVSC:/myhome/.vscode-server \\
   --bind $S_FILE_BASHPROF:/myhome/.bash_profile \\
   --bind $S_FILE_BASHRC:/myhome/.bashrc \\
   --bind $S_FILE_FISHCONFIG:/myhome/.config/fish/config.fish \\
   --bind $S_FILE_ZSHRC:/myhome/.zshrc \\
   --bind \$HOME/.ssh:/myhome/.ssh \\
+  --bind $S_WORKDIR/.setup_vscode.sh:/myhome/.setup_vscode.sh \\
+  --bind $S_WORKDIR/.recommended_packages.txt:/myhome/.recommended_packages.txt \\
+  --bind $S_WORKDIR/config_template.json:/myhome/.config_template.json \\
 EOF
 )"
 else
@@ -1053,6 +1192,10 @@ else
   --bind $S_FILE_FISHCONFIG:/hpc/users/$S_USERNAME/.config/fish/config.fish \\
   --bind $S_FILE_ZSHRC:/hpc/users/$S_USERNAME/.zshrc \\
   --bind $SVSC_DIR_CONFIG:/hpc/users/$S_USERNAME/.config/Code \\
+  --bind $SVSC_DIR_CONFIG_DOTVSC:/hpc/users/$S_USERNAME/.vscode-server \\
+  --bind $S_WORKDIR/.setup_vscode.sh:/hpc/users/$S_USERNAME/.setup_vscode.sh \\
+  --bind $S_WORKDIR/.recommended_packages.txt:/hpc/users/$S_USERNAME/.recommended_packages.txt \\
+  --bind $S_WORKDIR/config_template.json:/hpc/users/$S_USERNAME/.config_template.json \\
 EOF
 )"
 fi
