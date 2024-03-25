@@ -9,22 +9,7 @@ From: rockylinux/rockylinux:9
   dnf install -y dnf-plugins-core
   dnf config-manager --set-enabled crb
   dnf install -y epel-release
-  dnf install -y --allowerasing gcc make lua lua-devel lua-libs lua-posix \
-    tcl tcl-devel wget curl openssh-clients ca-certificates zsh gzip bzip2 xz \
-    luarocks.noarch
-  luarocks install luabitop-53plus
-  luarocks install luaterminal
-  luarocks install lpeg
-  luarocks install lua-json
-  # Install Lmod
-  cd /tmp
-  wget https://github.com/TACC/Lmod/archive/refs/tags/8.7.37.tar.gz
-  tar xf 8.7.37.tar.gz
-  cd Lmod-8.7.37
-  ./configure --prefix=/opt/lmod
-  make install
-  cd /tmp
-  rm -rf 8.7.37.tar.gz Lmod-8.7.37
+  dnf install -y Lmod wget curl openssh-clients zsh gzip bzip2 xz exa fish git
   # Install Conda
   cd /tmp
   wget -O Miniforge3.sh "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh" && \
