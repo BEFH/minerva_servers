@@ -9,8 +9,8 @@ From: rockylinux/rockylinux:9
   dnf install -y --allowerasing \
     dnf-plugins-core wget curl openssh-clients zsh gzip bzip2 xz git which
   dnf config-manager --set-enabled crb
-  crb enable
-  dnf install -y epel-release 
+  dnf install -y epel-release
+  /bin/crb enable
   dnf install -y Lmod exa fish lua-devel
   # Install Conda
   
