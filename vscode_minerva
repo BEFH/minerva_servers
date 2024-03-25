@@ -560,19 +560,35 @@ fi
 
 echoinfo "Checking for VSCode Server image and app"
 
-S_IMAGE_DEFAULT="/sc/arion/work/$S_USERNAME/vscode_latest.sif"
+if [[ $S_IMAGE == "default" ]]; then
+  echoinfo "Using default ubuntu image"
+  S_IMAGE="/sc/arion/work/$S_USERNAME/vscode_latest.sif"
+  S_IMAGE_URL="library://befh/vscode-conda/vscode-conda:latest"
+  S_DISTRO=ubuntu
+  echodebug "Using image $S_IMAGE"
+elif [[ $S_IMAGE == "rocky" ]]; then
+  echoinfo "Using rocky image"
+  S_IMAGE="/sc/arion/work/$S_USERNAME/vscode_rocky_latest.sif"
+  S_IMAGE_URL="library://befh/vscode-conda/rocky:latest"
+  S_DISTRO=rocky
+  echodebug "Using image $S_IMAGE"
+else
+  echoinfo "Using custom image $S_IMAGE"
+  S_DISTRO=custom
+fi
+
 VSC_URL="https://code.visualstudio.com/sha/download?build=stable&os=cli-alpine-x64"
 S_CONTENTS_DLAPP=$(cat <<EOF
-if [[ $S_IMAGE == "default" ]] &&
-   [[ $S_UPDATE -eq 1 || ! -e $S_IMAGE_DEFAULT ]]; then
-  image_url="library://befh/vscode-conda/vscode-conda:latest"
-  echo $(echoinfo "Pulling the default image $image_url")
-  echo $(echoinfo "Pulling image to $S_IMAGE_DEFAULT")
-  ml singularity/3.6.4
-  singularity pull --name $S_IMAGE_DEFAULT --arch amd64 $image_url
-elif [[ $S_IMAGE != "default" && ! -e $S_IMAGE ]]; then
-  echoerror "Specified image \"$S_IMAGE\" does not exist"
-  exit 1
+if [[ $S_UPDATE -eq 1 || ! -e $S_IMAGE ]]; then
+  if [[ $S_DISTRO == "custom" ]]; then
+    echo $(echoerror "Specified image \"$S_IMAGE\" does not exist")
+    exit 1
+  else
+    echo $(echoinfo "Pulling the default image $S_IMAGE_URL")
+    echo $(echoinfo "Pulling image to $S_IMAGE")
+    ml singularity/3.6.4
+    singularity pull --name $S_IMAGE --arch amd64 $S_IMAGE_URL
+  fi
 fi
 if [[ $S_UPDATE -eq 1 || ! -e $SVSC_APP ]]; then
   echo $(echoinfo "Downloading the latest VSCode app version")
@@ -592,11 +608,6 @@ else
     exit 1
   fi
 fi
-
-if [[ $S_IMAGE == "default" ]]; then
-  S_IMAGE=$S_IMAGE_DEFAULT
-fi
-echodebug "Using image $S_IMAGE"
 
 ###############################################################################
 # Check for leftover files                                                    #
@@ -914,7 +925,7 @@ fi
 
 S_CONTENTS_BASHPROF=$(cat <<EOF
 # Set prompt to standard bash prompt instead of the one from the image
-PS1='\u@\h:\w\$ '
+export PS1='\u@\h:\w\$ '
 minerva() {
   if [[ \$PWD == "/myhome" ]]; then
     minervadir='\$HOME'
@@ -955,6 +966,8 @@ if [ -f "/opt/conda/etc/profile.d/mamba.sh" ]; then
     . "/opt/conda/etc/profile.d/mamba.sh"
 fi
 # <<< conda initialize <<<
+
+conda activate $S_CONDAENV
 EOF
 )
 
@@ -1002,12 +1015,14 @@ end
 
 alias ijob 'conda deactivate; echo "leaving sandbox"; ssh -t li03c03 ijob'
 alias regjob 'conda deactivate; echo "leaving sandbox"; ssh -t li03c03 regjob'
+
+conda activate $S_CONDAENV
 EOF
 )
 
 S_CONTENTS_ZSHRC=$(cat <<EOF
 # Set prompt to standard zsh prompt instead of the one from the image
-PROMPT='%n@%m:%~%# '
+export PROMPT='%n@%m:%~%# '
 
 # >>> conda initialize >>>
 # !! Contents within this block are managed by 'conda init' !!
@@ -1041,6 +1056,8 @@ minerva() {
 alias ijob='conda deactivate; echo leaving sandbox; ssh -t li03c03 ijob'
 alias regjob='conda deactivate; echo leaving sandbox; ssh -t li03c03 regjob'
 alias ll='ls -l'
+
+conda activate $S_CONDAENV
 EOF
 )
 
@@ -1130,9 +1147,9 @@ mkdir -p $S_TMP/{home,tmp}
 cat > $S_TMP/home/.launch_radian.sh <<EOFF
 #!/usr/bin/env bash
 if which radian > /dev/null; then
-  LC_ALL=C.UTF-8 radian
+  LC_ALL=C.UTF-8 radian \$@
 else
-  LC_ALL=C.UTF-8 R
+  LC_ALL=C.UTF-8 R \$@
 fi
 
 exit 0
@@ -1141,7 +1158,7 @@ chmod +x $S_TMP/home/.launch_radian.sh
 
 cat > $S_TMP/home/.launch_r.sh <<EOFF
 #!/usr/bin/env bash
-LC_ALL=C.UTF-8 R
+LC_ALL=C.UTF-8 R \$@
 EOFF
 chmod +x $S_TMP/home/.launch_r.sh
 
