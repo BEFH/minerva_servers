@@ -1149,9 +1149,9 @@ mkdir -p $S_TMP/{home,tmp}
 cat > $S_TMP/home/.launch_radian.sh <<EOFF
 #!/usr/bin/env bash
 if which radian > /dev/null; then
-  LC_ALL=C.UTF-8 radian \$@
+  LC_ALL=C.UTF-8 radian \\\$@
 else
-  LC_ALL=C.UTF-8 R \$@
+  LC_ALL=C.UTF-8 R \\\$@
 fi
 
 exit 0
@@ -1160,7 +1160,7 @@ chmod +x $S_TMP/home/.launch_radian.sh
 
 cat > $S_TMP/home/.launch_r.sh <<EOFF
 #!/usr/bin/env bash
-LC_ALL=C.UTF-8 R \$@
+LC_ALL=C.UTF-8 R \\\$@
 EOFF
 chmod +x $S_TMP/home/.launch_r.sh
 
