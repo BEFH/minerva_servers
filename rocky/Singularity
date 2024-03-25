@@ -6,10 +6,11 @@ From: rockylinux/rockylinux:9
 
 %post
   # Install necessary dependencies
-  dnf install -y dnf-plugins-core wget curl openssh-clients zsh gzip bzip2 xz git
+  dnf install -y --allowerasing \
+    dnf-plugins-core wget curl openssh-clients zsh gzip bzip2 xz git
   dnf config-manager --set-enabled crb
   dnf install -y epel-release 
-  dnf install -y --allowerasing Lmod exa fish
+  dnf install -y Lmod exa fish
   # Install Conda
   cd /tmp
   wget -O Miniforge3.sh "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh" && \
