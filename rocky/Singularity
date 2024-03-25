@@ -6,10 +6,9 @@ From: rockylinux/rockylinux:9
 
 %post
   # Install necessary dependencies
+  dnf install -y dnf-plugins-core
   dnf config-manager --set-enabled crb
-  dnf install \
-    https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm \
-    https://dl.fedoraproject.org/pub/epel/epel-next-release-latest-9.noarch.rpm
+  dnf install -y epel-release
   dnf install -y gcc make lua lua-devel lua-libs lua-posix tcl tcl-devel \
     wget curl openssh-clients ca-certificates zsh gzip bzip2 xz luarocks.noarch
   luarocks install luabitop-53plus luaterminal lpeg lua-json
