@@ -9,7 +9,7 @@ From: rockylinux/rockylinux:9
   dnf install -y dnf-plugins-core
   dnf config-manager --set-enabled crb
   dnf install -y epel-release
-  dnf install -y --nobest gcc make lua lua-devel lua-libs lua-posix 
+  dnf install -y --nobest gcc make lua lua-devel lua-libs lua-posix \
     tcl tcl-devel wget curl openssh-clients ca-certificates zsh gzip bzip2 xz \
     luarocks.noarch
   luarocks install luabitop-53plus luaterminal lpeg lua-json
