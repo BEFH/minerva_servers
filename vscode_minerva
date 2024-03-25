@@ -479,7 +479,7 @@ if [[ ! -f $S_WORKDIR/.config_template.json ]] || [[ $S_UPDATE -eq 1 ]]; then
         "bash": {
             "path": "bash",
             "icon": "terminal-bash",
-            "args": ["-c", ". ~/.bashrc; . ~/.bash_profile; bash"]
+            "args": ["--rcfile", "~/.bash_profile"]
         },
         "bash-minerva": {
             "path": "bash",
@@ -498,13 +498,12 @@ if [[ ! -f $S_WORKDIR/.config_template.json ]] || [[ $S_UPDATE -eq 1 ]]; then
             "args": ["-c", "minerva"]
         }
     },
-    "window.menuBarVisibility": "visible",
-    "terminal.integrated.persistentSessionScrollback": 10000,
     "terminal.integrated.scrollback": 100000,
     "r.bracketedPaste": true,
     "r.rpath.linux": "/myhome/.launch_r.sh",
     "r.rterm.linux": "/myhome/.launch_radian.sh",
-    "r.rterm.option": []
+    "r.rterm.option": [],
+    "vsicons.dontShowNewVersionMessage": true,
 }
 EOFF
 fi
@@ -926,6 +925,7 @@ fi
 S_CONTENTS_BASHPROF=$(cat <<EOF
 # Set prompt to standard bash prompt instead of the one from the image
 export PS1='\u@\h:\w\$ '
+source \$HOME/.bashrc
 minerva() {
   if [[ \$PWD == "/myhome" ]]; then
     minervadir='\$HOME'
@@ -967,6 +967,7 @@ if [ -f "/opt/conda/etc/profile.d/mamba.sh" ]; then
 fi
 # <<< conda initialize <<<
 
+export PROMPT_COMMAND=""
 conda activate $S_CONDAENV
 EOF
 )
@@ -1022,6 +1023,7 @@ EOF
 
 S_CONTENTS_ZSHRC=$(cat <<EOF
 # Set prompt to standard zsh prompt instead of the one from the image
+export PROMPT_COMMAND=""
 export PROMPT='%n@%m:%~%# '
 
 # >>> conda initialize >>>
@@ -1225,11 +1227,13 @@ else
   --bind $S_FILE_BASHRC:/hpc/users/$S_USERNAME/.bashrc \\
   --bind $S_FILE_FISHCONFIG:/hpc/users/$S_USERNAME/.config/fish/config.fish \\
   --bind $S_FILE_ZSHRC:/hpc/users/$S_USERNAME/.zshrc \\
-  --bind /usr/share/lmod:/usr/share/lmod:ro \\
   --bind $SVSC_DIR_CONFIG_DOTVSC:/hpc/users/$S_USERNAME/.vscode-server \\
   --bind $S_WORKDIR/.setup_vscode.sh:/hpc/users/$S_USERNAME/.setup_vscode.sh \\
   --bind $S_WORKDIR/.recommended_packages.txt:/hpc/users/$S_USERNAME/.recommended_packages.txt \\
   --bind $S_WORKDIR/.config_template.json:/hpc/users/$S_USERNAME/.config_template.json \\
+  --bind $S_TMP/home/.launch_r.sh:/hpc/users/$S_USERNAME/.launch_r.sh \\
+  --bind $S_TMP/home/.launch_radian.sh:/hpc/users/$S_USERNAME/.launch_radian.sh \\
+  --bind /hpc/lsf:/hpc/lsf \\
 EOF
 )"
 fi
