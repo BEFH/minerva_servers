@@ -1,12 +1,18 @@
 Bootstrap: docker
 From: rockylinux/rockylinux:9
 
+# missing: lua-bitop lua-json lua-lpeg lua-term exa fish
+# unnecessary: tar less libstdc++ glibc bash
+
 %post
   # Install necessary dependencies
-  dnf install -y gcc make lua lua-devel lua-bitop \
-    lua-json lua-lpeg lua-posix lua-term tcl tcl-devel \
-    wget curl tar less openssh-clients libstdc++ glibc \
-    ca-certificates bash fish zsh exa gzip bzip2 xz
+  dnf config-manager --set-enabled crb
+  dnf install \
+    https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm \
+    https://dl.fedoraproject.org/pub/epel/epel-next-release-latest-9.noarch.rpm
+  dnf install -y gcc make lua lua-devel lua-libs lua-posix tcl tcl-devel \
+    wget curl openssh-clients ca-certificates zsh gzip bzip2 xz luarocks.noarch
+  luarocks install luabitop-53plus luaterminal lpeg lua-json
   # Install Lmod
   cd /tmp
   wget https://github.com/TACC/Lmod/archive/refs/tags/8.7.37.tar.gz
@@ -41,6 +47,7 @@ From: rockylinux/rockylinux:9
     bash /opt/start_code.sh "${@}"
 
 %apprun bash
+    #!/bin/bash
     . /opt/conda/etc/profile.d/conda.sh && \
     . /opt/conda/etc/profile.d/mamba.sh && \
     alias ll='ls -l' && \
@@ -50,6 +57,7 @@ From: rockylinux/rockylinux:9
     /bin/bash
 
 %runscript
+    #!/bin/bash
     bash /opt/start_code.sh "${@}"
 
 
