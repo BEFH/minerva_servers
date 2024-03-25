@@ -1,0 +1,55 @@
+Bootstrap: docker
+From: rockylinux/rockylinux:9
+
+%post
+  # Install necessary dependencies
+  dnf install -y gcc make lua lua-devel lua-bitop \
+    lua-json lua-lpeg lua-posix lua-term tcl tcl-devel \
+    wget curl tar less openssh-clients libstdc++ glibc \
+    ca-certificates bash fish zsh exa gzip bzip2 xz
+  # Install Lmod
+  cd /tmp
+  wget https://github.com/TACC/Lmod/archive/refs/tags/8.7.37.tar.gz
+  tar xf 8.7.37.tar.gz
+  cd Lmod-8.7.37
+  ./configure --prefix=/opt/lmod
+  make install
+  cd /tmp
+  rm -rf 8.7.37.tar.gz Lmod-8.7.37
+  # Install Conda
+  cd /tmp
+  wget -O Miniforge3.sh "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh" && \
+  bash Miniforge3.sh -b -p /opt/conda && \
+  rm Miniforge3.sh && \
+  echo "done"
+  # Set default shell to bash
+  chsh -s /bin/bash
+
+%files
+    start_code.sh /opt/start_code.sh
+
+%environment
+    export S_CONDAENV=${S_CONDAENV:-$CONDA_DEFAULT_ENV}
+    [[ -z "$http_proxy" ]] || export http_proxy=$http_proxy
+    [[ -z "$https_proxy" ]] || export https_proxy=$https_proxy
+    [[ -z "$no_proxy" ]] || export no_proxy=$no_proxy
+    [[ -z "$ftp_proxy" ]] || export ftp_proxy=$ftp_proxy
+    [[ -z "$all_proxy" ]] || export all_proxy=$all_proxy
+    [[ -z "$rsync_proxy" ]] || export rsync_proxy=$rsync_proxy
+
+%apprun code
+    bash /opt/start_code.sh "${@}"
+
+%apprun bash
+    . /opt/conda/etc/profile.d/conda.sh && \
+    . /opt/conda/etc/profile.d/mamba.sh && \
+    alias ll='ls -l' && \
+    echo "activating env $RS_CONDAENV" && \
+    conda activate $RS_CONDAENV && \
+    echo "starting BASH" && \
+    /bin/bash
+
+%runscript
+    bash /opt/start_code.sh "${@}"
+
+
