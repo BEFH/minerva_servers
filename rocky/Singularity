@@ -12,7 +12,10 @@ From: rockylinux/rockylinux:9
   dnf install -y --allowerasing gcc make lua lua-devel lua-libs lua-posix \
     tcl tcl-devel wget curl openssh-clients ca-certificates zsh gzip bzip2 xz \
     luarocks.noarch
-  luarocks install luabitop-53plus luaterminal lpeg lua-json
+  luarocks install luabitop-53plus
+  luarocks install luaterminal
+  luarocks install lpeg
+  luarocks install lua-json
   # Install Lmod
   cd /tmp
   wget https://github.com/TACC/Lmod/archive/refs/tags/8.7.37.tar.gz
