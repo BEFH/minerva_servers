@@ -8,7 +8,7 @@ From: rockylinux/rockylinux:9
   # Install necessary dependencies
   dnf install -y --allowerasing \
     dnf-plugins-core wget curl openssh-clients zsh gzip bzip2 xz git which \
-    libnsl
+    libnsl libxcrypt-compat
   dnf config-manager --set-enabled crb
   dnf install -y epel-release
   /bin/crb enable
