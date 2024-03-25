@@ -26,7 +26,7 @@ From: rockylinux/rockylinux:9
   chsh -s /bin/bash
 
 %files
-    start_code.sh /opt/start_code.sh
+    rocky/start_code.sh /opt/start_code.sh
 
 %environment
     export S_CONDAENV=${S_CONDAENV:-$CONDA_DEFAULT_ENV}
