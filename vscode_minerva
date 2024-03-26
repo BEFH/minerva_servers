@@ -947,7 +947,18 @@ EOF
 #   echo configuring VSCode, please run ~/.setup_vscode.sh
 # fi
 
+S_BSUBCMD=/hpc/lsf/10.1/linux3.10-glibc2.17-x86_64/bin/bsub
+
 S_CONTENTS_BASHRC=$(cat <<EOF
+bsub() {
+    bsubcmd=$S_BSUBCMD
+    if module is-loaded lsf && module is-loaded CPAN &> /dev/null; then
+        \$bsubcmd \$@ 2> >(grep -v "Perl_xs_version_bootcheck" >&2)
+    else
+        echo "Please enable LSF by running 'lsf_enable'"
+    fi
+}
+
 # >>> conda initialize >>>
 # !! Contents within this block are managed by 'conda init' !!
 __conda_setup="\$('/opt/conda/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
@@ -969,6 +980,9 @@ fi
 
 export PROMPT_COMMAND=""
 conda activate $S_CONDAENV
+
+alias lsf_enable="ml lsf CPAN"
+alias lsf_disable="ml -lsf -CPAN"
 EOF
 )
 
@@ -1014,14 +1028,34 @@ function minerva
   exit 0
 end
 
+function bsub
+  set bsubcmd $S_BSUBCMD
+  if type -q module; and module is-loaded lsf; and module is-loaded CPAN
+    bash -c "\$bsubcmd \$argv 2> >(grep -v 'Perl_xs_version_bootcheck' >&2)"
+  else
+    echo "Please enable LSF by running 'lsf_enable'"
+  end
+end
+
 alias ijob 'ssh -t li03c04 ijob'
 alias regjob 'ssh -t li03c04 regjob'
+alias lsf_enable="ml lsf CPAN"
+alias lsf_disable="ml -lsf -CPAN"
 
 conda activate $S_CONDAENV
 EOF
 )
 
 S_CONTENTS_ZSHRC=$(cat <<EOF
+bsub() {
+    bsubcmd=$S_BSUBCMD
+    if module is-loaded lsf && module is-loaded CPAN &> /dev/null; then
+        \$bsubcmd \$@ 2> >(grep -v "Perl_xs_version_bootcheck" >&2)
+    else
+        echo "Please enable LSF by running 'lsf_enable'"
+    fi
+}
+
 # Set prompt to standard zsh prompt instead of the one from the image
 export PROMPT_COMMAND=""
 export PROMPT='%n@%m:%~%# '
@@ -1030,7 +1064,7 @@ export PROMPT='%n@%m:%~%# '
 # !! Contents within this block are managed by 'conda init' !!
 __conda_setup="\$('/opt/conda/bin/conda' 'shell.zsh' 'hook' 2> /dev/null)"
 if [ \$? -eq 0 ]; then
-    eval "$__conda_setup"
+    eval "\$__conda_setup"
 else
     if [ -f "/opt/conda/etc/profile.d/conda.sh" ]; then
         . "/opt/conda/etc/profile.d/conda.sh"
@@ -1058,6 +1092,8 @@ minerva() {
 alias ijob='ssh -t li03c04 ijob'
 alias regjob='ssh -t li03c04 regjob'
 alias ll='ls -l'
+alias lsf_enable="ml lsf CPAN"
+alias lsf_disable="ml -lsf -CPAN"
 
 conda activate $S_CONDAENV
 EOF
