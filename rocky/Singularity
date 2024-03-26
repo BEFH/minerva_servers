@@ -8,11 +8,12 @@ From: rockylinux/rockylinux:9
   # Install necessary dependencies
   dnf install -y --allowerasing \
     dnf-plugins-core wget curl openssh-clients zsh gzip bzip2 xz git which \
-    libnsl libxcrypt-compat
+    libnsl libxcrypt-compat perl-CPAN
   dnf config-manager --set-enabled crb
   dnf install -y epel-release
   /bin/crb enable
   dnf install -y Lmod exa fish lua-devel
+  cpan install LSF::Base LSF::Batch
   # Install Conda
   
   wget -O Miniforge3.sh "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh" && \
