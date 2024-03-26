@@ -586,7 +586,7 @@ if [[ $S_UPDATE -eq 1 || ! -e $S_IMAGE ]]; then
     echo $(echoinfo "Pulling the default image $S_IMAGE_URL")
     echo $(echoinfo "Pulling image to $S_IMAGE")
     ml singularity/3.6.4
-    singularity pull --name $S_IMAGE --arch amd64 $S_IMAGE_URL
+    singularity pull -F --name $S_IMAGE --arch amd64 $S_IMAGE_URL
   fi
 fi
 if [[ $S_UPDATE -eq 1 || ! -e $SVSC_APP ]]; then
