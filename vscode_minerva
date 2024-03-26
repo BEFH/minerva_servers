@@ -548,7 +548,7 @@ EOFF
 fi
 EOF
 )
-#
+
 if [[ "$S_HOSTNAME" == "minervarun" ]]; then
   eval "$S_CONTENTS_MKDIRS"
 else
@@ -559,17 +559,17 @@ fi
 
 echoinfo "Checking for VSCode Server image and app"
 
-if [[ $S_IMAGE == "default" ]]; then
-  echoinfo "Using default ubuntu image"
-  S_IMAGE="/sc/arion/work/$S_USERNAME/vscode_latest.sif"
-  S_IMAGE_URL="library://befh/vscode-conda/vscode-conda:latest"
-  S_DISTRO=ubuntu
-  echodebug "Using image $S_IMAGE"
-elif [[ $S_IMAGE == "rocky" ]]; then
-  echoinfo "Using rocky image"
+if [[ $S_IMAGE =~ ^(rocky|default)$ ]]; then
+  echoinfo "Using default rocky image"
   S_IMAGE="/sc/arion/work/$S_USERNAME/vscode_rocky_latest.sif"
   S_IMAGE_URL="library://befh/vscode-conda/rocky:latest"
   S_DISTRO=rocky
+  echodebug "Using image $S_IMAGE"
+elif [[ $S_IMAGE == "default" ]]; then
+  echoinfo "Using ubuntu image"
+  S_IMAGE="/sc/arion/work/$S_USERNAME/vscode_latest.sif"
+  S_IMAGE_URL="library://befh/vscode-conda/vscode-conda:latest"
+  S_DISTRO=ubuntu
   echodebug "Using image $S_IMAGE"
 else
   echoinfo "Using custom image $S_IMAGE"
@@ -936,8 +936,8 @@ minerva() {
     "conda activate $S_CONDAENV; ml proxies; cd \$minervadir; bash"
   exit 0
 }
-alias ijob='conda deactivate; echo leaving sandbox; ssh -t li03c03 ijob'
-alias regjob='conda deactivate; echo leaving sandbox; ssh -t li03c03 regjob'
+alias ijob='ssh -t li03c04 ijob'
+alias regjob='ssh -t li03c04 regjob'
 alias ll='ls -l'
 EOF
 )
@@ -1014,8 +1014,8 @@ function minerva
   exit 0
 end
 
-alias ijob 'conda deactivate; echo "leaving sandbox"; ssh -t li03c03 ijob'
-alias regjob 'conda deactivate; echo "leaving sandbox"; ssh -t li03c03 regjob'
+alias ijob 'ssh -t li03c04 ijob'
+alias regjob 'ssh -t li03c04 regjob'
 
 conda activate $S_CONDAENV
 EOF
@@ -1055,8 +1055,8 @@ minerva() {
     "conda activate $S_CONDAENV; ml proxies; cd \$minervadir; zsh"
   exit 0
 }
-alias ijob='conda deactivate; echo leaving sandbox; ssh -t li03c03 ijob'
-alias regjob='conda deactivate; echo leaving sandbox; ssh -t li03c03 regjob'
+alias ijob='ssh -t li03c04 ijob'
+alias regjob='ssh -t li03c04 regjob'
 alias ll='ls -l'
 
 conda activate $S_CONDAENV
@@ -1234,6 +1234,7 @@ else
   --bind $S_TMP/home/.launch_r.sh:/hpc/users/$S_USERNAME/.launch_r.sh \\
   --bind $S_TMP/home/.launch_radian.sh:/hpc/users/$S_USERNAME/.launch_radian.sh \\
   --bind /hpc/lsf:/hpc/lsf \\
+  --bind /hpc/packages:/hpc/packages \\
 EOF
 )"
 fi
