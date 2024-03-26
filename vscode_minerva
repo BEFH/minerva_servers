@@ -540,7 +540,7 @@ while read -r line; do
 done < ~/.recommended_packages.txt
 
 echo "To set up the configuration for VSCode, open the command palette with"
-echo "Cmd+Shift+P and type Preferences: Open User Settings JSON"
+printf "Cmd+Shift+P and type Preferences: Open Remote Settings \x28JSON\x29\n"
 echo "Then copy and paste the following:"
 cat ~/.config_template.json
 EOFF
@@ -548,6 +548,8 @@ EOFF
 fi
 EOF
 )
+
+echo "$S_CONTENTS_MKDIRS"
 
 if [[ "$S_HOSTNAME" == "minervarun" ]]; then
   eval "$S_CONTENTS_MKDIRS"
