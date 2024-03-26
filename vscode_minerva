@@ -549,8 +549,6 @@ fi
 EOF
 )
 
-echo "$S_CONTENTS_MKDIRS"
-
 if [[ "$S_HOSTNAME" == "minervarun" ]]; then
   eval "$S_CONTENTS_MKDIRS"
 else
