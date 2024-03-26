@@ -936,6 +936,10 @@ minerva() {
     "conda activate $S_CONDAENV; ml proxies; cd \$minervadir; bash"
   exit 0
 }
+if [[ -d "/sc/arion/projects/load/scripts" ]]; then
+  export PATH="/sc/arion/projects/load/scripts:\$PATH"
+fi
+alias bblame='ssh -t li03c04 bblame'
 alias ijob='ssh -t li03c04 ijob'
 alias regjob='ssh -t li03c04 regjob'
 alias ll='ls -l'
@@ -1037,6 +1041,11 @@ function bsub
   end
 end
 
+if test -d "/sc/arion/projects/load/scripts"
+  set -x PATH "/sc/arion/projects/load/scripts" \$PATH
+end
+
+alias bblame 'ssh -t li03c04 bblame'
 alias ijob 'ssh -t li03c04 ijob'
 alias regjob 'ssh -t li03c04 regjob'
 alias lsf_enable="ml lsf CPAN"
@@ -1089,6 +1098,11 @@ minerva() {
     "conda activate $S_CONDAENV; ml proxies; cd \$minervadir; zsh"
   exit 0
 }
+
+if [[ -d "/sc/arion/projects/load/scripts" ]]; then
+  export PATH="/sc/arion/projects/load/scripts:\$PATH"
+fi
+alias bblame='ssh -t li03c04 bblame'
 alias ijob='ssh -t li03c04 ijob'
 alias regjob='ssh -t li03c04 regjob'
 alias ll='ls -l'
