@@ -492,6 +492,105 @@ SVSC_APP="$S_WORKDIR/code"
 
 echoinfo "Checking directories, files, image, and password"
 
+S_CONTENTS_MKDIRS=$(cat <<EOF
+if [[ ! -d $S_WORKDIR ]]; then
+  echo $(echoinfo "Creating working directory")
+  mkdir -p $S_WORKDIR
+fi
+if [[ ! -d $SVSC_DIR_CONFIG ]]; then
+  echo $(echoinfo "Creating config directory and files")
+  mkdir -p $SVSC_DIR_CONFIG
+fi
+if [[ ! -d $SVSC_DIR_CONFIG_DOTVSC ]]; then
+  echo $(echoinfo "Creating config directory and files")
+  mkdir -p $SVSC_DIR_CONFIG_DOTVSC
+fi
+if [[ ! -f $S_WORKDIR/.config_template.json ]] || [[ $S_UPDATE -eq 1 ]]; then
+  echo $(echoinfo "Creating config template file")
+  cat <<EOFF > $S_WORKDIR/.config_template.json
+{
+    "terminal.integrated.profiles.linux": {
+        "bash": {
+            "path": "bash",
+            "icon": "terminal-bash",
+            "args": ["--rcfile", "~/.bash_profile"]
+        },
+        "bash-minerva": {
+            "path": "bash",
+            "icon": "terminal-bash",
+            "args": ["-c", ". ~/.bash_profile; minerva"]
+        },
+        "zsh-minerva": {
+            "path": "zsh",
+            "args": ["-c", ". ~/.zshrc; minerva"]
+        },
+        "fish": {
+            "path": "fish"
+        },
+        "fish-minerva": {
+            "path": "fish",
+            "args": ["-c", "minerva"]
+        }
+    },
+    "terminal.integrated.scrollback": 100000,
+    "r.bracketedPaste": true,
+    "r.rpath.linux": "/myhome/.launch_r.sh",
+    "r.rterm.linux": "/myhome/.launch_radian.sh",
+    "r.rterm.option": [],
+    "vsicons.dontShowNewVersionMessage": true,
+    "terminal.integrated.defaultProfile.linux": "myterminal",
+}
+EOFF
+fi
+if [[ ! -f $S_WORKDIR/.recommended_packages.txt ]] || [[ $S_UPDATE -eq 1 ]]; then
+  echo $(echoinfo "Creating recommended packages file")
+  cat <<EOFF > $S_WORKDIR/.recommended_packages.txt
+formulahendry.code-runner
+REditorSupport.R
+janisdd.vscode-edit-csv
+grapecity.gc-excelviewer
+yzhang.markdown-all-in-one
+ms-python.python
+ms-toolsai.jupyter
+quarto.quarto
+snakemake.snakemake-lang
+vscode-icons-team.vscode-icons
+donjayamanne.python-environment-manager
+pnp.polacode
+ms-vsliveshare.vsliveshare
+github.remotehub
+donjayamanne.githistory
+ms-toolsai.datawrangler
+onnovalkering.vscode-singularity
+EOFF
+fi
+if [[ ! -f $S_WORKDIR/.setup_vscode.sh ]] || [[ $S_UPDATE -eq 1 ]]; then
+  echo $(echoinfo "Creating setup script")
+  cat <<EOFF > $S_WORKDIR/.setup_vscode.sh
+#!/usr/bin/env bash
+echo "Installing recommended extensions"
+while read -r line; do
+  code --install-extension "\\\$line"
+done < ~/.recommended_packages.txt
+
+def_shell=\$(getent passwd \$USER | awk -F: '{print \$7}' | xargs basename)
+
+echo "To set up the configuration for VSCode, open the command palette with"
+printf "Cmd+Shift+P and type Preferences: Open Remote Settings \x28JSON\x29\n"
+echo "Then copy and paste the following:"
+sed "s|/myhome|\\\$HOME|" ~/.config_template.json | sed "s|myterminal|\$def_shell|"
+EOFF
+  chmod +x $S_WORKDIR/.setup_vscode.sh
+fi
+EOF
+)
+
+if [[ "$S_HOSTNAME" == "minervarun" ]]; then
+  eval "$S_CONTENTS_MKDIRS"
+else
+  ssh $S_HOSTNAME "bash -c '$S_CONTENTS_MKDIRS'"
+fi
+
 S_CONTENTS_BASHPROF=$(cat <<EOF
 # Set prompt to standard bash prompt instead of the one from the image
 export PS1='\u@\h:\w\$ '
@@ -708,105 +807,6 @@ elif [[ $S_UPDATE -eq 1 ]] || ssh $S_HOSTNAME \
   ssh -T $S_HOSTNAME "cat > '$S_FILE_ZSHRC'" <<< "$S_CONTENTS_ZSHRC"
 fi
 echodebug "Done copying configfiles"
-
-S_CONTENTS_MKDIRS=$(cat <<EOF
-if [[ ! -d $S_WORKDIR ]]; then
-  echo $(echoinfo "Creating working directory")
-  mkdir -p $S_WORKDIR
-fi
-if [[ ! -d $SVSC_DIR_CONFIG ]]; then
-  echo $(echoinfo "Creating config directory and files")
-  mkdir -p $SVSC_DIR_CONFIG
-fi
-if [[ ! -d $SVSC_DIR_CONFIG_DOTVSC ]]; then
-  echo $(echoinfo "Creating config directory and files")
-  mkdir -p $SVSC_DIR_CONFIG_DOTVSC
-fi
-if [[ ! -f $S_WORKDIR/.config_template.json ]] || [[ $S_UPDATE -eq 1 ]]; then
-  echo $(echoinfo "Creating config template file")
-  cat <<EOFF > $S_WORKDIR/.config_template.json
-{
-    "terminal.integrated.profiles.linux": {
-        "bash": {
-            "path": "bash",
-            "icon": "terminal-bash",
-            "args": ["--rcfile", "~/.bash_profile"]
-        },
-        "bash-minerva": {
-            "path": "bash",
-            "icon": "terminal-bash",
-            "args": ["-c", ". ~/.bash_profile; minerva"]
-        },
-        "zsh-minerva": {
-            "path": "zsh",
-            "args": ["-c", ". ~/.zshrc; minerva"]
-        },
-        "fish": {
-            "path": "fish"
-        },
-        "fish-minerva": {
-            "path": "fish",
-            "args": ["-c", "minerva"]
-        }
-    },
-    "terminal.integrated.scrollback": 100000,
-    "r.bracketedPaste": true,
-    "r.rpath.linux": "/myhome/.launch_r.sh",
-    "r.rterm.linux": "/myhome/.launch_radian.sh",
-    "r.rterm.option": [],
-    "vsicons.dontShowNewVersionMessage": true,
-    "terminal.integrated.defaultProfile.linux": "myterminal",
-}
-EOFF
-fi
-if [[ ! -f $S_WORKDIR/.recommended_packages.txt ]] || [[ $S_UPDATE -eq 1 ]]; then
-  echo $(echoinfo "Creating recommended packages file")
-  cat <<EOFF > $S_WORKDIR/.recommended_packages.txt
-formulahendry.code-runner
-REditorSupport.R
-janisdd.vscode-edit-csv
-grapecity.gc-excelviewer
-yzhang.markdown-all-in-one
-ms-python.python
-ms-toolsai.jupyter
-quarto.quarto
-snakemake.snakemake-lang
-vscode-icons-team.vscode-icons
-donjayamanne.python-environment-manager
-pnp.polacode
-ms-vsliveshare.vsliveshare
-github.remotehub
-donjayamanne.githistory
-ms-toolsai.datawrangler
-onnovalkering.vscode-singularity
-EOFF
-fi
-if [[ ! -f $S_WORKDIR/.setup_vscode.sh ]] || [[ $S_UPDATE -eq 1 ]]; then
-  echo $(echoinfo "Creating setup script")
-  cat <<EOFF > $S_WORKDIR/.setup_vscode.sh
-#!/usr/bin/env bash
-echo "Installing recommended extensions"
-while read -r line; do
-  code --install-extension "\\\$line"
-done < ~/.recommended_packages.txt
-
-def_shell=\$(getent passwd \$USER | awk -F: '{print \$7}' | xargs basename)
-
-echo "To set up the configuration for VSCode, open the command palette with"
-printf "Cmd+Shift+P and type Preferences: Open Remote Settings \x28JSON\x29\n"
-echo "Then copy and paste the following:"
-sed "s|/myhome|\\\$HOME|" ~/.config_template.json | sed "s|myterminal|\$def_shell|"
-EOFF
-  chmod +x $S_WORKDIR/.setup_vscode.sh
-fi
-EOF
-)
-
-if [[ "$S_HOSTNAME" == "minervarun" ]]; then
-  eval "$S_CONTENTS_MKDIRS"
-else
-  ssh $S_HOSTNAME "bash -c '$S_CONTENTS_MKDIRS'"
-fi
 
 # check image
 
