@@ -11,9 +11,12 @@
 #                  : Andreas Lugmayr, Mike Boss                               #
 #  Date            : October 2021                                             #
 #  Location        : Mount Sinai (originally ETH Zurich)                      #
-#  Version         : 0.8.3                                                    #
+#  Version         : 0.8.4                                                    #
 #  Change history  :                                                          #
 #                                                                             #
+#  05.04.2024    Automated local port selection for remote start,             #
+#                editable config files, improved messages, and fixes to       #
+#                vscode configuration script                                  #
 #  24.03.2024    Adapt to run vscode server in a container environment        #
 #  21.03.2024    Isolation by default without isolation in terminal           #
 #  20.03.2024    Only log at debug level in Rstudio if --debug; Allow use     #
@@ -59,7 +62,7 @@
 ###############################################################################
 
 # Version
-S_VERSION="0.8.3"
+S_VERSION="0.8.4"
 
 # Script directory
 S_SCRIPTDIR=$HOME
@@ -119,6 +122,9 @@ S_UPDATE=0
 
 # Do not open browser by default
 S_OPEN_BROWSER=0
+
+# Remote start
+S_REMOTE_START="null"
 
 ###############################################################################
 # Text coloring                                                               #
@@ -196,8 +202,8 @@ Optional arguments:
   -I | --image      dload to work    Singularity image to use for the server.
                                       Downloaded automatically if not specified.
   --debug                            Print debug messages
-  --update                           Update the vscode server and singularity
-                                      image
+  --update                           Update vscode and singularity image
+  --remote-start                     Connect to job started from cluster
 
 Examples:
 
@@ -329,6 +335,10 @@ while [[ $# -gt 0 ]]; do
     S_UPDATE=1
     shift
     ;;
+    --remote-start)
+    S_REMOTE_START=$2
+    shift; shift
+    ;;
     *)
     echowarn "ignoring unknown option $1 \n"
     shift
@@ -339,6 +349,39 @@ done
 ###############################################################################
 # Check key configuration options                                             #
 ###############################################################################
+
+find_port() {
+  echoinfo "Determining free port on local computer"
+  PRT=$1
+  while ( lsof -i :$PRT -P -n | grep LISTEN &> /dev/null); do
+    PRT=$((PRT+1))
+  done
+  echo $PRT
+}
+
+if [[ $S_REMOTE_START != "null" ]]; then
+  # find free local port
+  S_LOCAL_PORT=$(find_port 18890)
+  S_REMOTE_IP=$(echo $S_REMOTE_START | cut -d: -f1)
+  S_REMOTE_PORT=$(echo $S_REMOTE_START | cut -d: -f2)
+  S_REMOTE_TOKEN=$(echo $S_REMOTE_START | cut -d: -f3)
+  echoinfo "Connecting to remote session at $S_REMOTE_IP:$S_REMOTE_PORT"
+  ssh $S_HOSTNAME -L $S_LOCAL_PORT:$S_REMOTE_IP:$S_REMOTE_PORT -fNT
+  if [[ $? -ne 0 ]]; then
+    echoerror "Failed to connect to remote session"
+    exit 1
+  fi
+  echoinfo "Please open the following URL in your browser:"
+  echoinfo "http://localhost:$S_LOCAL_PORT?tkn=$S_REMOTE_TOKEN"
+fi
+
+# check if user has a configuration file and source it to initialize options
+if [ -f "$S_CONFIG_FILE" ]; then
+  echoinfo "Found configuration file $S_CONFIG_FILE"
+  echoinfo "Initializing configuration from file ${S_CONFIG_FILE}:"
+  cat "$S_CONFIG_FILE"
+  source "$S_CONFIG_FILE"
+fi
 
 # check isolation mode
 
@@ -367,15 +410,6 @@ elif [[ $S_ISOLATED -eq 1 ]]; then
 elif [[ $S_ISOLATED -eq 2 ]]; then
   echoinfo "Running with full container isolation"
 fi
-
-# check if user has a configuration file and source it to initialize options
-if [ -f "$S_CONFIG_FILE" ]; then
-  echoinfo "Found configuration file $S_CONFIG_FILE"
-  echoinfo "Initializing configuration from file ${S_CONFIG_FILE}:"
-  cat "$S_CONFIG_FILE"
-  source "$S_CONFIG_FILE"
-fi
-
 
 # Check hostname
 get_hostinfo() {
@@ -444,10 +478,10 @@ S_BASE_RECONNECT=".reconnect_info_vsc$S_SESSION"
 S_FILE_RECONNECT="$S_WORKDIR/$S_BASE_RECONNECT"
 S_FILE_JOB="$S_WORKDIR/code$S_SESSION.lsf"
 S_FILE_IP="$S_WORKDIR/vscip$S_SESSION"
-S_FILE_BASHPROF="$S_WORKDIR/bash_profile$S_SESSION"
-S_FILE_BASHRC="$S_WORKDIR/bashrc$S_SESSION"
-S_FILE_FISHCONFIG="$S_WORKDIR/config$S_SESSION.fish"
-S_FILE_ZSHRC="$S_WORKDIR/zshrc$S_SESSION"
+S_FILE_BASHPROF="$S_WORKDIR/bash_profile"
+S_FILE_BASHRC="$S_WORKDIR/bashrc"
+S_FILE_FISHCONFIG="$S_WORKDIR/config.fish"
+S_FILE_ZSHRC="$S_WORKDIR/zshrc"
 SVSC_DIR_CONFIG="/hpc/users/$S_USERNAME/.config/CodeContainer"
 SVSC_DIR_CONFIG_DOTVSC="$S_WORKDIR/serverconf"
 SVSC_APP="$S_WORKDIR/code"
@@ -457,6 +491,223 @@ SVSC_APP="$S_WORKDIR/code"
 ###############################################################################
 
 echoinfo "Checking directories, files, image, and password"
+
+S_CONTENTS_BASHPROF=$(cat <<EOF
+# Set prompt to standard bash prompt instead of the one from the image
+export PS1='\u@\h:\w\$ '
+source \$HOME/.bashrc
+minerva() {
+  if [[ \$PWD == "/myhome" ]]; then
+    minervadir='\$HOME'
+  else
+    minervadir=\$PWD
+  fi
+  ssh -o StrictHostKeyChecking=accept-new -t \$(hostname -f) \\
+    "conda activate \$S_CONDAENV; ml proxies; cd \$minervadir; bash"
+  exit 0
+}
+if [[ -d "/sc/arion/projects/load/scripts" ]]; then
+  export PATH="/sc/arion/projects/load/scripts:\$PATH"
+fi
+alias bblame='ssh -t li03c04 bblame'
+alias ijob='ssh -t li03c04 ijob'
+alias regjob='ssh -t li03c04 regjob'
+alias ll='ls -l'
+EOF
+)
+
+# if ! [[ -d ~/.vscode-server/extensions/ ]] || [[ \$(ls -1 ~/.vscode-server/extensions/ | wc -l) -lt 4 ]]; then
+#   echo To install recommended VSCode extensions and display instructions for
+#   echo configuring VSCode, please run ~/.setup_vscode.sh
+# fi
+
+S_BSUBCMD=/hpc/lsf/10.1/linux3.10-glibc2.17-x86_64/bin/bsub
+
+S_CONTENTS_BASHRC=$(cat <<EOF
+bsub() {
+    bsubcmd=$S_BSUBCMD
+    if module is-loaded lsf && module is-loaded CPAN &> /dev/null; then
+        \$bsubcmd \$@ 2> >(grep -v "Perl_xs_version_bootcheck" >&2)
+    else
+        echo "Please enable LSF by running 'lsf_enable'"
+    fi
+}
+
+# >>> conda initialize >>>
+# !! Contents within this block are managed by 'conda init' !!
+__conda_setup="\$('/opt/conda/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
+if [ \$? -eq 0 ]; then
+    eval "\$__conda_setup"
+else
+    if [ -f "/opt/conda/etc/profile.d/conda.sh" ]; then
+        . "/opt/conda/etc/profile.d/conda.sh"
+    else
+        export PATH="/opt/conda/bin:\$PATH"
+    fi
+fi
+unset __conda_setup
+
+if [ -f "/opt/conda/etc/profile.d/mamba.sh" ]; then
+    . "/opt/conda/etc/profile.d/mamba.sh"
+fi
+# <<< conda initialize <<<
+
+export PROMPT_COMMAND=""
+conda activate \$S_CONDAENV
+
+alias lsf_enable="ml lsf CPAN"
+alias lsf_disable="ml -lsf -CPAN"
+EOF
+)
+
+# if test -d ~/.vscode-server/extensions/
+#   set vsc_numext (ls -1 ~/.vscode-server/extensions/ | wc -l)
+# else
+#   set vsc_numext 0
+# end
+# if test \$vsc_numext -lt 4
+#   echo To install recommended VSCode extensions and display instructions for
+#   echo configuring VSCode, please run ~/.setup_vscode.sh
+# end
+
+S_CONTENTS_FISHCONFIG=$(cat <<EOF
+if status is-interactive
+    # Commands to run in interactive sessions can go here
+end
+
+# >>> conda initialize >>>
+# !! Contents within this block are managed by 'conda init' !!
+if test -f /opt/conda/bin/conda
+    eval /opt/conda/bin/conda "shell.fish" "hook" \$argv | source
+else
+    if test -f "/opt/conda/etc/fish/conf.d/conda.fish"
+        . "/opt/conda/etc/fish/conf.d/conda.fish"
+    else
+        set -x PATH "/opt/conda/bin" \$PATH
+    end
+end
+
+if test -f "/opt/conda/etc/fish/conf.d/mamba.fish"
+    source "/opt/conda/etc/fish/conf.d/mamba.fish"
+end
+# <<< conda initialize <<<
+function minerva
+  if test \$PWD = "/myhome"
+    set minervadir '\$HOME'
+  else
+    set minervadir \$PWD
+  end
+  ssh -o StrictHostKeyChecking=accept-new -t (hostname) \\
+    "conda activate \$S_CONDAENV; ml proxies; cd \$minervadir; fish"
+  exit 0
+end
+
+function bsub
+  set bsubcmd $S_BSUBCMD
+  if type -q module; and module is-loaded lsf; and module is-loaded CPAN
+    bash -c "\$bsubcmd \$argv 2> >(grep -v 'Perl_xs_version_bootcheck' >&2)"
+  else
+    echo "Please enable LSF by running 'lsf_enable'"
+  end
+end
+
+if test -d "/sc/arion/projects/load/scripts"
+  set -x PATH "/sc/arion/projects/load/scripts" \$PATH
+end
+
+alias bblame 'ssh -t li03c04 bblame'
+alias ijob 'ssh -t li03c04 ijob'
+alias regjob 'ssh -t li03c04 regjob'
+alias lsf_enable="ml lsf CPAN"
+alias lsf_disable="ml -lsf -CPAN"
+
+conda activate \$S_CONDAENV
+EOF
+)
+
+S_CONTENTS_ZSHRC=$(cat <<EOF
+bsub() {
+    bsubcmd=$S_BSUBCMD
+    if module is-loaded lsf && module is-loaded CPAN &> /dev/null; then
+        \$bsubcmd \$@ 2> >(grep -v "Perl_xs_version_bootcheck" >&2)
+    else
+        echo "Please enable LSF by running 'lsf_enable'"
+    fi
+}
+
+# Set prompt to standard zsh prompt instead of the one from the image
+export PROMPT_COMMAND=""
+export PROMPT='%n@%m:%~%# '
+
+# >>> conda initialize >>>
+# !! Contents within this block are managed by 'conda init' !!
+__conda_setup="\$('/opt/conda/bin/conda' 'shell.zsh' 'hook' 2> /dev/null)"
+if [ \$? -eq 0 ]; then
+    eval "\$__conda_setup"
+else
+    if [ -f "/opt/conda/etc/profile.d/conda.sh" ]; then
+        . "/opt/conda/etc/profile.d/conda.sh"
+    else
+        export PATH="/opt/conda/bin:\$PATH"
+    fi
+fi
+unset __conda_setup
+
+if [ -f "/opt/conda/etc/profile.d/mamba.sh" ]; then
+    . "/opt/conda/etc/profile.d/mamba.sh"
+fi
+# <<< conda initialize <<<
+
+minerva() {
+  if [[ \$PWD == "/myhome" ]]; then
+    minervadir='\$HOME'
+  else
+    minervadir=\$PWD
+  fi
+  ssh -o StrictHostKeyChecking=accept-new -t \$(hostname -f) \\
+    "conda activate \$S_CONDAENV; ml proxies; cd \$minervadir; zsh"
+  exit 0
+}
+
+if [[ -d "/sc/arion/projects/load/scripts" ]]; then
+  export PATH="/sc/arion/projects/load/scripts:\$PATH"
+fi
+alias bblame='ssh -t li03c04 bblame'
+alias ijob='ssh -t li03c04 ijob'
+alias regjob='ssh -t li03c04 regjob'
+alias ll='ls -l'
+alias lsf_enable="ml lsf CPAN"
+alias lsf_disable="ml -lsf -CPAN"
+
+conda activate \$S_CONDAENV
+EOF
+)
+
+if [[ $S_HOSTNAME == "minervarun" ]] && \
+   ( [[ $S_UPDATE -eq 1 ]] || \
+     [ ! -f $S_FILE_BASHPROF ] || \
+     [ ! -f $S_FILE_BASHRC ] ||\
+     [ ! -f $S_FILE_FISHCONFIG ] || \
+     [ ! -f $S_FILE_ZSHRC ] ); then
+  # Store the docstring in $S_FILE_LOGCONF locally
+  echoinfo "Locally copying config files on minerva"
+  echo "$S_CONTENTS_BASHPROF" > "$S_FILE_BASHPROF"
+  echo "$S_CONTENTS_BASHRC" > "$S_FILE_BASHRC"
+  echo "$S_CONTENTS_FISHCONFIG" > "$S_FILE_FISHCONFIG"
+  echo "$S_CONTENTS_ZSHRC" > "$S_FILE_ZSHRC"
+elif [[ $S_UPDATE -eq 1 ]] || ssh $S_HOSTNAME \
+    "[ ! -f $S_FILE_BASHPROF ] || \
+     [ ! -f $S_FILE_BASHRC ] || \
+     [ ! -f $S_FILE_FISHCONFIG ] || \
+     [ ! -f $S_FILE_ZSHRC ]"; then
+  # Copy the docstring to $S_FILE_LOGCONF remotely
+  echoinfo "Copying config and files to $S_HOSTNAME"
+  ssh -T $S_HOSTNAME "cat > '$S_FILE_BASHPROF'" <<< "$S_CONTENTS_BASHPROF"
+  ssh -T $S_HOSTNAME "cat > '$S_FILE_BASHRC'" <<< "$S_CONTENTS_BASHRC"
+  ssh -T $S_HOSTNAME "cat > '$S_FILE_FISHCONFIG'" <<< "$S_CONTENTS_FISHCONFIG"
+  ssh -T $S_HOSTNAME "cat > '$S_FILE_ZSHRC'" <<< "$S_CONTENTS_ZSHRC"
+fi
+echodebug "Done copying configfiles"
 
 S_CONTENTS_MKDIRS=$(cat <<EOF
 if [[ ! -d $S_WORKDIR ]]; then
@@ -504,6 +755,7 @@ if [[ ! -f $S_WORKDIR/.config_template.json ]] || [[ $S_UPDATE -eq 1 ]]; then
     "r.rterm.linux": "/myhome/.launch_radian.sh",
     "r.rterm.option": [],
     "vsicons.dontShowNewVersionMessage": true,
+    "terminal.integrated.defaultProfile.linux": "myterminal",
 }
 EOFF
 fi
@@ -526,7 +778,6 @@ ms-vsliveshare.vsliveshare
 github.remotehub
 donjayamanne.githistory
 ms-toolsai.datawrangler
-kamikillerto.vscode-colorize
 onnovalkering.vscode-singularity
 EOFF
 fi
@@ -539,10 +790,12 @@ while read -r line; do
   code --install-extension "\\\$line"
 done < ~/.recommended_packages.txt
 
+def_shell=\$(getent passwd \$USER | awk -F: '{print \$7}' | xargs basename)
+
 echo "To set up the configuration for VSCode, open the command palette with"
 printf "Cmd+Shift+P and type Preferences: Open Remote Settings \x28JSON\x29\n"
 echo "Then copy and paste the following:"
-cat ~/.config_template.json
+sed "s|/myhome|\\\$HOME|" ~/.config_template.json | sed "s|myterminal|\$def_shell|"
 EOFF
   chmod +x $S_WORKDIR/.setup_vscode.sh
 fi
@@ -629,8 +882,10 @@ instructs_mrun() {
   echoinfo "$S_FWDCMD"
   echoinfo "Run that command in a terminal to establish the SSH tunnel."
   echoinfo "Replace LOCAL_PORT in the following url with the chosen port:"
-  echoinfo "http://localhost:LOCAL_PORT?tkn=$S_TOKEN"
+  echoinfo "http://localhost:LOCAL_PORT?tkn=$S_REMOTE_TOKEN"
   echoinfo "Open the url in your browser and use the password to log in."
+  echoinfo "Or run the following command:"
+  echoinfo "vscode_minerva --remote-start $S_REMOTE_IP:$S_REMOTE_PORT:$S_REMOTE_TOKEN"
 }
 
 echoinfo "Checking if reconnection is possible\n"
@@ -658,7 +913,9 @@ if [ -f $S_RCI ]; then
 
     if [[ "$S_HOSTNAME" == "minervarun" ]]; then
       S_FWDCMD=$(sed -nE 's/^SSH tunnel +: (.+)/\1/p' $S_RCI)
-      S_TOKEN=$(sed -nE 's/^Remote token[a-zA-Z ]+: (.+)/\1/p' $S_RCI)
+      S_REMOTE_TOKEN=$(sed -nE 's/^Remote token[a-zA-Z ]+: (.+)/\1/p' $S_RCI)
+      S_REMOTE_IP=$(sed -nE 's/^Remote IP address +: (.+)/\1/p' $S_RCI)
+      S_REMOTE_PORT=$(sed -nE 's/^Remote port +: (.+)/\1/p' $S_RCI)
       instructs_mrun
       exit 0
     fi
@@ -922,197 +1179,6 @@ if [[ $S_DEBUG -eq 1 ]]; then
   VSC_LOG_LEVEL="debug"
 fi
 
-S_CONTENTS_BASHPROF=$(cat <<EOF
-# Set prompt to standard bash prompt instead of the one from the image
-export PS1='\u@\h:\w\$ '
-source \$HOME/.bashrc
-minerva() {
-  if [[ \$PWD == "/myhome" ]]; then
-    minervadir='\$HOME'
-  else
-    minervadir=\$PWD
-  fi
-  ssh -o StrictHostKeyChecking=accept-new -t \$(hostname -f) \\
-    "conda activate $S_CONDAENV; ml proxies; cd \$minervadir; bash"
-  exit 0
-}
-if [[ -d "/sc/arion/projects/load/scripts" ]]; then
-  export PATH="/sc/arion/projects/load/scripts:\$PATH"
-fi
-alias bblame='ssh -t li03c04 bblame'
-alias ijob='ssh -t li03c04 ijob'
-alias regjob='ssh -t li03c04 regjob'
-alias ll='ls -l'
-EOF
-)
-
-# if ! [[ -d ~/.vscode-server/extensions/ ]] || [[ \$(ls -1 ~/.vscode-server/extensions/ | wc -l) -lt 4 ]]; then
-#   echo To install recommended VSCode extensions and display instructions for
-#   echo configuring VSCode, please run ~/.setup_vscode.sh
-# fi
-
-S_BSUBCMD=/hpc/lsf/10.1/linux3.10-glibc2.17-x86_64/bin/bsub
-
-S_CONTENTS_BASHRC=$(cat <<EOF
-bsub() {
-    bsubcmd=$S_BSUBCMD
-    if module is-loaded lsf && module is-loaded CPAN &> /dev/null; then
-        \$bsubcmd \$@ 2> >(grep -v "Perl_xs_version_bootcheck" >&2)
-    else
-        echo "Please enable LSF by running 'lsf_enable'"
-    fi
-}
-
-# >>> conda initialize >>>
-# !! Contents within this block are managed by 'conda init' !!
-__conda_setup="\$('/opt/conda/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
-if [ \$? -eq 0 ]; then
-    eval "\$__conda_setup"
-else
-    if [ -f "/opt/conda/etc/profile.d/conda.sh" ]; then
-        . "/opt/conda/etc/profile.d/conda.sh"
-    else
-        export PATH="/opt/conda/bin:\$PATH"
-    fi
-fi
-unset __conda_setup
-
-if [ -f "/opt/conda/etc/profile.d/mamba.sh" ]; then
-    . "/opt/conda/etc/profile.d/mamba.sh"
-fi
-# <<< conda initialize <<<
-
-export PROMPT_COMMAND=""
-conda activate $S_CONDAENV
-
-alias lsf_enable="ml lsf CPAN"
-alias lsf_disable="ml -lsf -CPAN"
-EOF
-)
-
-# if test -d ~/.vscode-server/extensions/
-#   set vsc_numext (ls -1 ~/.vscode-server/extensions/ | wc -l)
-# else
-#   set vsc_numext 0
-# end
-# if test \$vsc_numext -lt 4
-#   echo To install recommended VSCode extensions and display instructions for
-#   echo configuring VSCode, please run ~/.setup_vscode.sh
-# end
-
-S_CONTENTS_FISHCONFIG=$(cat <<EOF
-if status is-interactive
-    # Commands to run in interactive sessions can go here
-end
-
-# >>> conda initialize >>>
-# !! Contents within this block are managed by 'conda init' !!
-if test -f /opt/conda/bin/conda
-    eval /opt/conda/bin/conda "shell.fish" "hook" \$argv | source
-else
-    if test -f "/opt/conda/etc/fish/conf.d/conda.fish"
-        . "/opt/conda/etc/fish/conf.d/conda.fish"
-    else
-        set -x PATH "/opt/conda/bin" \$PATH
-    end
-end
-
-if test -f "/opt/conda/etc/fish/conf.d/mamba.fish"
-    source "/opt/conda/etc/fish/conf.d/mamba.fish"
-end
-# <<< conda initialize <<<
-function minerva
-  if test \$PWD = "/myhome"
-    set minervadir '\$HOME'
-  else
-    set minervadir \$PWD
-  end
-  ssh -o StrictHostKeyChecking=accept-new -t (hostname) \\
-    "conda activate $S_CONDAENV; ml proxies; cd \$minervadir; fish"
-  exit 0
-end
-
-function bsub
-  set bsubcmd $S_BSUBCMD
-  if type -q module; and module is-loaded lsf; and module is-loaded CPAN
-    bash -c "\$bsubcmd \$argv 2> >(grep -v 'Perl_xs_version_bootcheck' >&2)"
-  else
-    echo "Please enable LSF by running 'lsf_enable'"
-  end
-end
-
-if test -d "/sc/arion/projects/load/scripts"
-  set -x PATH "/sc/arion/projects/load/scripts" \$PATH
-end
-
-alias bblame 'ssh -t li03c04 bblame'
-alias ijob 'ssh -t li03c04 ijob'
-alias regjob 'ssh -t li03c04 regjob'
-alias lsf_enable="ml lsf CPAN"
-alias lsf_disable="ml -lsf -CPAN"
-
-conda activate $S_CONDAENV
-EOF
-)
-
-S_CONTENTS_ZSHRC=$(cat <<EOF
-bsub() {
-    bsubcmd=$S_BSUBCMD
-    if module is-loaded lsf && module is-loaded CPAN &> /dev/null; then
-        \$bsubcmd \$@ 2> >(grep -v "Perl_xs_version_bootcheck" >&2)
-    else
-        echo "Please enable LSF by running 'lsf_enable'"
-    fi
-}
-
-# Set prompt to standard zsh prompt instead of the one from the image
-export PROMPT_COMMAND=""
-export PROMPT='%n@%m:%~%# '
-
-# >>> conda initialize >>>
-# !! Contents within this block are managed by 'conda init' !!
-__conda_setup="\$('/opt/conda/bin/conda' 'shell.zsh' 'hook' 2> /dev/null)"
-if [ \$? -eq 0 ]; then
-    eval "\$__conda_setup"
-else
-    if [ -f "/opt/conda/etc/profile.d/conda.sh" ]; then
-        . "/opt/conda/etc/profile.d/conda.sh"
-    else
-        export PATH="/opt/conda/bin:\$PATH"
-    fi
-fi
-unset __conda_setup
-
-if [ -f "/opt/conda/etc/profile.d/mamba.sh" ]; then
-    . "/opt/conda/etc/profile.d/mamba.sh"
-fi
-# <<< conda initialize <<<
-
-minerva() {
-  if [[ \$PWD == "/myhome" ]]; then
-    minervadir='\$HOME'
-  else
-    minervadir=\$PWD
-  fi
-  ssh -o StrictHostKeyChecking=accept-new -t \$(hostname -f) \\
-    "conda activate $S_CONDAENV; ml proxies; cd \$minervadir; zsh"
-  exit 0
-}
-
-if [[ -d "/sc/arion/projects/load/scripts" ]]; then
-  export PATH="/sc/arion/projects/load/scripts:\$PATH"
-fi
-alias bblame='ssh -t li03c04 bblame'
-alias ijob='ssh -t li03c04 ijob'
-alias regjob='ssh -t li03c04 regjob'
-alias ll='ls -l'
-alias lsf_enable="ml lsf CPAN"
-alias lsf_disable="ml -lsf -CPAN"
-
-conda activate $S_CONDAENV
-EOF
-)
-
 echoinfo "Building LSF jobscript"
 
 #ssh $S_HOSTNAME "cat > $S_FILE_JOB" <<<cat <<EOF
@@ -1358,22 +1424,14 @@ fi
 
 if [[ $S_HOSTNAME == "minervarun" ]]; then
   # Store the docstring in $S_FILE_LOGCONF locally
-  echodebug "Locally copying config and job files on minerva"
-  echo "$S_CONTENTS_BASHPROF" > "$S_FILE_BASHPROF"
-  echo "$S_CONTENTS_BASHRC" > "$S_FILE_BASHRC"
-  echo "$S_CONTENTS_FISHCONFIG" > "$S_FILE_FISHCONFIG"
-  echo "$S_CONTENTS_ZSHRC" > "$S_FILE_ZSHRC"
+  echodebug "Locally copying job file on minerva"
   echo "$S_CONTENTS_JOB" > "$S_FILE_JOB"
 else
   # Copy the docstring to $S_FILE_LOGCONF remotely
-  echodebug "Copying config and job files to $S_HOSTNAME"
-  ssh -T $S_HOSTNAME "cat > '$S_FILE_BASHPROF'" <<< "$S_CONTENTS_BASHPROF"
-  ssh -T $S_HOSTNAME "cat > '$S_FILE_BASHRC'" <<< "$S_CONTENTS_BASHRC"
-  ssh -T $S_HOSTNAME "cat > '$S_FILE_FISHCONFIG'" <<< "$S_CONTENTS_FISHCONFIG"
-  ssh -T $S_HOSTNAME "cat > '$S_FILE_ZSHRC'" <<< "$S_CONTENTS_ZSHRC"
+  echodebug "Copying job file to $S_HOSTNAME"
   ssh -T $S_HOSTNAME "cat > '$S_FILE_JOB'" <<< "$S_CONTENTS_JOB"
 fi
-echodebug "Done copying config and job files"
+echodebug "Done copying job file"
 
 TRY=1
 SUCCESS=0
@@ -1488,16 +1546,6 @@ fi
 
 # get a free port on local computer
 ## S_LOCAL_PORT=$((3 * 2**14 + RANDOM % 2**14))
-
-echoinfo "Determining free port on local computer"
-
-find_port() {
-  PRT=$1
-  while ( lsof -i :$PRT -P -n | grep LISTEN &> /dev/null); do
-    PRT=$((PRT+1))
-  done
-  echo $PRT
-}
 
 if [[ $S_HOSTNAME == "minervarun" ]]; then
   S_LOCAL_PORT=LOCAL_PORT
