@@ -1525,9 +1525,6 @@ echoerror "* Please check login to the cluster and check with bjobs if the batch
 exit 1
 fi
 
-# get a free port on local computer
-## S_LOCAL_PORT=$((3 * 2**14 + RANDOM % 2**14))
-
 if [[ $S_HOSTNAME == "minervarun" ]]; then
   S_LOCAL_PORT=LOCAL_PORT
 elif ! [ -z ${S_SESSION+x} ]; then
