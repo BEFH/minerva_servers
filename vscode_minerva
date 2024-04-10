@@ -351,7 +351,7 @@ done
 ###############################################################################
 
 find_port() {
-  echoinfo "Determining free port on local computer"
+  echoinfo "Determining free port on local computer" 1>&2
   PRT=$1
   while ( lsof -i :$PRT -P -n | grep LISTEN &> /dev/null); do
     PRT=$((PRT+1))
@@ -373,6 +373,7 @@ if [[ $S_REMOTE_START != "null" ]]; then
   fi
   echoinfo "Please open the following URL in your browser:"
   echoinfo "http://localhost:$S_LOCAL_PORT?tkn=$S_REMOTE_TOKEN"
+  exit 0
 fi
 
 # check if user has a configuration file and source it to initialize options
@@ -578,7 +579,7 @@ def_shell=\$(getent passwd \$USER | awk -F: '{print \$7}' | xargs basename)
 echo "To set up the configuration for VSCode, open the command palette with"
 printf "Cmd+Shift+P and type Preferences: Open Remote Settings \x28JSON\x29\n"
 echo "Then copy and paste the following:"
-sed "s|/myhome|\\\$HOME|" ~/.config_template.json | sed "s|myterminal|\$def_shell|"
+sed "s|/myhome|\\\$HOME|" ~/.config_template.json | sed "s|myterminal|\\\$def_shell|" 
 EOFF
   chmod +x $S_WORKDIR/.setup_vscode.sh
 fi
