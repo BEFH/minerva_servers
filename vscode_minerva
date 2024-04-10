@@ -466,9 +466,16 @@ fi
 if [[ "$S_HOSTNAME" == "minervarun" ]]; then
   echoinfo "Running locally on Minerva"
   S_USERNAME=$USER
+  # make a function to run heredoc locally
+  eval_heredoc() {
+    eval "$@"
+  }
 else
   echoinfo "Connecting to $S_HOSTNAME"
   S_USERNAME=$(ssh -n $S_HOSTNAME 'echo "$USER"')
+  eval_heredoc() {
+    ssh $S_HOSTNAME 'bash -s' "$@"
+  }
 fi
 
 echoinfo "Setting up directories and files"
@@ -493,7 +500,7 @@ SVSC_APP="$S_WORKDIR/code"
 
 echoinfo "Checking directories, files, image, and password"
 
-S_CONTENTS_MKDIRS=$(cat <<EOF
+eval_heredoc <<EOF
 if [[ ! -d $S_WORKDIR ]]; then
   echo $(echoinfo "Creating working directory")
   mkdir -p $S_WORKDIR
@@ -508,6 +515,7 @@ if [[ ! -d $SVSC_DIR_CONFIG_DOTVSC ]]; then
 fi
 if [[ ! -f $S_WORKDIR/.config_template.json ]] || [[ $S_UPDATE -eq 1 ]]; then
   echo $(echoinfo "Creating config template file")
+  remote_shell=\$(getent passwd \$USER | awk -F: '{print \$7}' | xargs basename)
   cat <<EOFF > $S_WORKDIR/.config_template.json
 {
     "terminal.integrated.profiles.linux": {
@@ -539,7 +547,7 @@ if [[ ! -f $S_WORKDIR/.config_template.json ]] || [[ $S_UPDATE -eq 1 ]]; then
     "r.rterm.linux": "/myhome/.launch_radian.sh",
     "r.rterm.option": [],
     "vsicons.dontShowNewVersionMessage": true,
-    "terminal.integrated.defaultProfile.linux": "myterminal",
+    "terminal.integrated.defaultProfile.linux": "\$remote_shell",
 }
 EOFF
 fi
@@ -567,30 +575,21 @@ EOFF
 fi
 if [[ ! -f $S_WORKDIR/.setup_vscode.sh ]] || [[ $S_UPDATE -eq 1 ]]; then
   echo $(echoinfo "Creating setup script")
-  cat <<EOFF > $S_WORKDIR/.setup_vscode.sh
+  cat <<'EOFF' > $S_WORKDIR/.setup_vscode.sh
 #!/usr/bin/env bash
 echo "Installing recommended extensions"
 while read -r line; do
-  code --install-extension "\\\$line"
+  code --install-extension "\$line"
 done < ~/.recommended_packages.txt
-
-def_shell=\$(getent passwd \$USER | awk -F: '{print \$7}' | xargs basename)
 
 echo "To set up the configuration for VSCode, open the command palette with"
 printf "Cmd+Shift+P and type Preferences: Open Remote Settings \x28JSON\x29\n"
 echo "Then copy and paste the following:"
-sed "s|/myhome|\\\$HOME|" ~/.config_template.json | sed "s|myterminal|\\\$def_shell|" 
+sed "s|/myhome|\$HOME|" ~/.config_template.json 
 EOFF
   chmod +x $S_WORKDIR/.setup_vscode.sh
 fi
 EOF
-)
-
-if [[ "$S_HOSTNAME" == "minervarun" ]]; then
-  eval "$S_CONTENTS_MKDIRS"
-else
-  ssh $S_HOSTNAME "bash -c '$S_CONTENTS_MKDIRS'"
-fi
 
 S_CONTENTS_BASHPROF=$(cat <<EOF
 # Set prompt to standard bash prompt instead of the one from the image
@@ -831,7 +830,7 @@ else
 fi
 
 VSC_URL="https://code.visualstudio.com/sha/download?build=stable&os=cli-alpine-x64"
-S_CONTENTS_DLAPP=$(cat <<EOF
+eval_heredoc <<EOF
 if [[ $S_UPDATE -eq 1 || ! -e $S_IMAGE ]]; then
   if [[ $S_DISTRO == "custom" ]]; then
     echo $(echoerror "Specified image \"$S_IMAGE\" does not exist")
@@ -851,15 +850,9 @@ if [[ $S_UPDATE -eq 1 || ! -e $SVSC_APP ]]; then
   rm vscode.tar.gz
 fi
 EOF
-)
 
-if [[ "$S_HOSTNAME" == "minervarun" ]]; then
-  eval "$S_CONTENTS_DLAPP"
-else
-  ssh $S_HOSTNAME "bash -c '$S_CONTENTS_DLAPP'"
-  if [[ $? -ne 0 ]]; then
-    exit 1
-  fi
+if [[ $? -ne 0 ]]; then
+  exit 1
 fi
 
 ###############################################################################
@@ -969,7 +962,7 @@ else
 fi
 
 # check for log files from a previous session in the home directory of the cluster
-S_CONTENTS_RMFILES=$(cat <<EOF
+eval_heredoc <<EOF
 if [[ -f $S_FILE_RECONNECT ]]; then
   echo $(echoinfo "Found old remote session file, deleting it ...")
   rm $S_FILE_RECONNECT
@@ -985,13 +978,7 @@ if [[ -f $S_FILE_JOB ]]; then
   rm $S_FILE_JOB
 fi
 EOF
-)
 
-if [[ "$S_HOSTNAME" == "minervarun" ]]; then
-  eval "$S_CONTENTS_RMFILES"
-else
-  ssh $S_HOSTNAME "bash -c '$S_CONTENTS_RMFILES'"
-fi
 
 ###############################################################################
 # Check configuration options                                                 #
@@ -1298,7 +1285,7 @@ EOF
 
 echodebug "Adding conda and module binds to job script"
 
-S_CONTENTS_CONDAPATHS=$(cat <<EOF
+S_CONTENTS_JOB+=$(eval_heredoc <<EOF
   echo
   for i in $(echo "$S_CONDADIRS" | tr '\n' ' '); do
     if test -e "\$i"; then
@@ -1308,15 +1295,8 @@ S_CONTENTS_CONDAPATHS=$(cat <<EOF
   if test -e "\$HOME/.condarc"; then
     echo "  --bind \$HOME/.condarc:/etc/conda/condarc "
   fi
-EOF
+EOF | sed '/./ s|$|\\|'
 )
-
-if [[ $S_HOSTNAME == "minervarun" ]]; then
-  S_CONTENTS_JOB+=$(bash -c "$S_CONTENTS_CONDAPATHS" | sed '/./ s|$|\\|')
-else
-  S_CONTENTS_JOB+=$(ssh $S_HOSTNAME "bash -c '$S_CONTENTS_CONDAPATHS'" | \
-                    sed '/./ s|$|\\|')
-fi
 
 if [[ $S_ISOLATED -gt 0 ]]; then
   S_CONTENTS_JOB+="$(cat <<EOF
