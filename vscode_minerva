@@ -1285,7 +1285,7 @@ EOF
 
 echodebug "Adding conda and module binds to job script"
 
-S_CONTENTS_JOB+=$(eval_heredoc <<EOF
+S_CONTENTS_JOB_CONDA=$(eval_heredoc <<EOF
   echo
   for i in $(echo "$S_CONDADIRS" | tr '\n' ' '); do
     if test -e "\$i"; then
@@ -1295,8 +1295,10 @@ S_CONTENTS_JOB+=$(eval_heredoc <<EOF
   if test -e "\$HOME/.condarc"; then
     echo "  --bind \$HOME/.condarc:/etc/conda/condarc "
   fi
-EOF | sed '/./ s|$|\\|'
+EOF
 )
+
+S_CONTENTS_JOB+=$(echo "$S_CONTENTS_JOB_CONDA" | sed '/./ s|$|\\|')
 
 if [[ $S_ISOLATED -gt 0 ]]; then
   S_CONTENTS_JOB+="$(cat <<EOF
