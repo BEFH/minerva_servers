@@ -1092,7 +1092,6 @@ singularity run \\
   --bind $S_WORKDIR/database.conf:/etc/rstudio/database.conf \\
   --bind $S_WORKDIR/rsession.conf:/etc/rstudio/rsession.conf \\
   --bind $S_WORKDIR/rserver.conf:/etc/rstudio/rserver.conf \\
-  --bind ${RS_PREFIX}:${S_PREFIX} \\
   --bind ${S_PREFIX}:${S_PREFIX} \\
   --bind $S_FILE_LOGCONF:/etc/rstudio/logging.conf \\
   --bind $S_TMP/run:/serverdir \\
@@ -1102,7 +1101,6 @@ singularity run \\
   --app rserver \\
   --env PASSWORD=\$PASSWORD \\
   --env RS_CONDAENV=$S_CONDAENV \\
-  --env S_CONDAENV=$S_CONDAENV \\  
   --env USER=$S_USERNAME \\
   --cleanenv \\
 EOF
