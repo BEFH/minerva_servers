@@ -1075,10 +1075,10 @@ echo "Remote Port:\$S_PORT_REMOTE" >> $S_FILE_IP
 # Set-up temporary paths
 mkdir -p $S_TMP/{run,var-lib-rstudio-server,home,tmp}
 
-export RSTUDIO_R_BIN=$RS_PREFIX/bin/R
-export RSTUDIO_PY_BIN=$RS_PREFIX/bin/python
+export RSTUDIO_R_BIN=$S_PREFIX/bin/R
+export RSTUDIO_PY_BIN=$S_PREFIX/bin/python
 
-if [ -z "$RS_PREFIX" ]; then
+if [ -z "$S_PREFIX" ]; then
   echo "Activate a conda env or specify CONDA_PREFIX"
   exit 1
 fi
@@ -1092,7 +1092,8 @@ singularity run \\
   --bind $S_WORKDIR/database.conf:/etc/rstudio/database.conf \\
   --bind $S_WORKDIR/rsession.conf:/etc/rstudio/rsession.conf \\
   --bind $S_WORKDIR/rserver.conf:/etc/rstudio/rserver.conf \\
-  --bind ${RS_PREFIX}:${RS_PREFIX} \\
+  --bind ${RS_PREFIX}:${S_PREFIX} \\
+  --bind ${S_PREFIX}:${S_PREFIX} \\
   --bind $S_FILE_LOGCONF:/etc/rstudio/logging.conf \\
   --bind $S_TMP/run:/serverdir \\
   --bind $S_DIR_LOGCONF:/rstudio_logs \\
@@ -1148,7 +1149,7 @@ S_CONTENTS_JOB+="$(cat <<EOF
   $S_IMAGE --auth-none 0 --auth-pam-helper-path=pam-helper \\
   --www-port \$S_PORT_REMOTE --server-data-dir=/serverdir \\
   --rsession-which-r=\$RSTUDIO_R_BIN \\
-  --rsession-ld-library-path=$RS_PREFIX/lib \\
+  --rsession-ld-library-path=$S_PREFIX/lib \\
   --secure-cookie-key-file /serverdir/secure-cookie-key \\
   --server-user $S_USERNAME &
 
