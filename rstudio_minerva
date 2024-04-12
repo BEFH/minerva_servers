@@ -466,7 +466,7 @@ if [[ "$S_HOSTNAME" == "minervarun" ]]; then
   S_USERNAME=$USER
   # make a function to run heredoc locally
   eval_heredoc() {
-    eval "$@"
+    bash -s "$@"
   }
 else
   echoinfo "Connecting to $S_HOSTNAME"
