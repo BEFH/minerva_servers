@@ -106,10 +106,10 @@ S_WAITING_INTERVAL=30
 S_RESOURCE="null"
 
 # Default env                   : shell default
-RS_CONDAENV="null"
+S_CONDAENV="null"
 
 # Default image                 : "default" means dl to /sc/arion/work/$USER/
-RS_IMAGE="default"
+S_IMAGE="default"
 
 # Debugging mode
 S_DEBUG=0
@@ -1100,7 +1100,8 @@ singularity run \\
   --bind /opt/hpc:/opt/hpc:ro \\
   --app rserver \\
   --env PASSWORD=\$PASSWORD \\
-  --env RS_CONDAENV=$RS_CONDAENV \\
+  --env RS_CONDAENV=$S_CONDAENV \\
+  --env S_CONDAENV=$S_CONDAENV \\  
   --env USER=$S_USERNAME \\
   --cleanenv \\
 EOF
