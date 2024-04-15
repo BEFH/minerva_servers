@@ -21,7 +21,7 @@ From: rockylinux/rockylinux:9
   echo "done"
 
 %files
-    rocky/start_code.sh /opt/start_code.sh
+    vscode_rocky/start_code.sh /opt/start_code.sh
 
 %environment
     export S_CONDAENV=${S_CONDAENV:-$CONDA_DEFAULT_ENV}
@@ -48,5 +48,3 @@ From: rockylinux/rockylinux:9
 %runscript
     #!/bin/bash
     bash /opt/start_code.sh "${@}"
-
-
