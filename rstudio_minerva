@@ -11,9 +11,10 @@
 #                  : Andreas Lugmayr, Mike Boss                               #
 #  Date            : October 2021                                             #
 #  Location        : Mount Sinai (originally ETH Zurich)                      #
-#  Version         : 0.8.3                                                    #
+#  Version         : 0.8.5                                                    #
 #  Change history  :                                                          #
 #                                                                             #
+#  15.04.2024    Move singularity image paths                                 #
 #  24.03.2024    Roll in enhancements from new vscode version of script       #
 #  21.03.2024    Isolation by default without isolation in terminal           #
 #  20.03.2024    Only log at debug level in Rstudio if --debug; Allow use     #
@@ -59,7 +60,7 @@
 ###############################################################################
 
 # Version
-S_VERSION="0.8.4"
+S_VERSION="0.8.5"
 
 # Script directory
 S_SCRIPTDIR=$HOME
@@ -596,9 +597,9 @@ EOF
 echoinfo "Checking for RStudio Server image"
 
 if [[ $S_IMAGE == "default" ]]; then
-  echoinfo "Using default ubuntu image"
+  echoinfo "Using default Ubuntu image"
   S_IMAGE="/sc/arion/work/$S_USERNAME/rstudio_latest.sif"
-  S_IMAGE_URL="library://befh/rstudio-server-conda/rstudio-server-conda:latest"
+  S_IMAGE_URL="library://befh/minerva_servers/rstudio:latest"
   S_DISTRO=ubuntu
   echodebug "Using image $S_IMAGE"
 else

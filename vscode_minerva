@@ -11,9 +11,10 @@
 #                  : Andreas Lugmayr, Mike Boss                               #
 #  Date            : October 2021                                             #
 #  Location        : Mount Sinai (originally ETH Zurich)                      #
-#  Version         : 0.8.4                                                    #
+#  Version         : 0.8.5                                                    #
 #  Change history  :                                                          #
 #                                                                             #
+#  15.04.2024    Move singularity image paths                                 #
 #  05.04.2024    Automated local port selection for remote start,             #
 #                editable config files, improved messages, and fixes to       #
 #                vscode configuration script                                  #
@@ -62,7 +63,7 @@
 ###############################################################################
 
 # Version
-S_VERSION="0.8.4"
+S_VERSION="0.8.5"
 
 # Script directory
 S_SCRIPTDIR=$HOME
@@ -813,15 +814,15 @@ echodebug "Done copying configfiles"
 echoinfo "Checking for VSCode Server image and app"
 
 if [[ $S_IMAGE =~ ^(rocky|default)$ ]]; then
-  echoinfo "Using default rocky image"
+  echoinfo "Using default Rocky image"
   S_IMAGE="/sc/arion/work/$S_USERNAME/vscode_rocky_latest.sif"
-  S_IMAGE_URL="library://befh/vscode-conda/rocky:latest"
+  S_IMAGE_URL="library://befh/minerva_servers/vscode_rocky:latest"
   S_DISTRO=rocky
   echodebug "Using image $S_IMAGE"
-elif [[ $S_IMAGE == "default" ]]; then
-  echoinfo "Using ubuntu image"
-  S_IMAGE="/sc/arion/work/$S_USERNAME/vscode_latest.sif"
-  S_IMAGE_URL="library://befh/vscode-conda/vscode-conda:latest"
+elif [[ $S_IMAGE == "ubuntu" ]]; then
+  echoinfo "Using Ubuntu image"
+  S_IMAGE="/sc/arion/work/$S_USERNAME/vscode_ubuntu_latest.sif"
+  S_IMAGE_URL="library://befh/minerva_servers/vscode_ubuntu:latest"
   S_DISTRO=ubuntu
   echodebug "Using image $S_IMAGE"
 else
