@@ -22,10 +22,8 @@ These scripts will be integrated into the lab setup script.
 For now, do the following:
 
 ```bash
-cd ~/local/src
-git clone git@github.com:BEFH/minerva_servers.git
-cd minerva_servers
-git checkout autoconnect_remote
+mkdir -p ~/local/src ~/local/scripts
+git clone git@github.com:BEFH/minerva_servers.git ~/local/src/minerva_servers
 cd ~/local/scripts
 rm vscode_minerva rstudio_minerva
 ln -s ../src/minerva_servers/vscode_minerva
