@@ -1,182 +1,257 @@
-# Running Rstudio Server in a Conda Environment
+# Run browser applications on Minerva Jobs
 
-I usually rely on the [conda package manager](https://docs.conda.io/en/latest/) to manage my environments during development. Thanks to [conda-forge](https://conda-forge.org/) and [bioconda](https://bioconda.github.io/) most R packages are now also available through conda. For production,
-I [convert them to containers](https://github.com/grst/containerize-conda) as these are easier to share. 
+There are currently 2 scripts in this repository:
 
-Unfortunately, there seems to be [no straightforward way](https://community.rstudio.com/t/start-rstudio-server-session-in-conda-environment/12516/15) to use conda envs in Rstudio server. This repository provides three approaches to make rstudio server work with conda envs. 
+*  ***`vscode_minerva`***: Runs *Microsoft Visual Studio Code* on Minerva
+*  ***`rstudio_minerva`*** Runs Posit *RStudio* on Minerva
 
- * [Running Rstudio Server in a Singularity Container](#running-rstudio-server-with-singularity)
- * [Running Rstudio Server in a Docker/Podman Container](#running-rstudio-server-with-podmandocker)
- * [Running Rstudio Server locally](#running-locally)
+Both scripts have the following features:
 
-## Running Rstudio Server with Singularity
+* Run in *Singulatity/Apptainer* environments on Minerva to allow modern applications and isolation
+* Start either on Minerva or locally
+  * Locally on your computer is simpler (only need to run one command)
+  * Remote is faster and allows running in collaborative accounts
+    but you must still have the script installed on your computer and run a
+    command to forward ports.
+* Use Anaconda/Mamba to manage packages
+* Run on the Minerva cluster in jobs
 
-With this approach Rstudio Server runs in a Singularity container (based on [rocker/rstudio](https://hub.docker.com/r/rocker/rstudio)).  
-The conda environment gets mounted into the container - like that there's no need to rebuild the container to add a package and 
-`install.packages` can be used without issues. The container-based approach has the following benefits: 
+## Installation
 
- * Authentication works ([#3](https://github.com/grst/rstudio-server-conda/issues/3))
- * Several separate instances of Rstudio server can run in parallel, even without the *Pro* version. 
+These scripts will be integrated into the lab setup script.
+For now, do the following:
 
-### Prerequisites
+```bash
+mkdir -p ~/local/src ~/local/scripts
+git clone git@github.com:BEFH/minerva_servers.git ~/local/src/minerva_servers
+cd ~/local/scripts
+rm vscode_minerva rstudio_minerva
+ln -s ../src/minerva_servers/vscode_minerva
+ln -s ../src/minerva_servers/rstudio_minerva
+cd
+```
 
- * [Singularity](https://sylabs.io/guides/3.0/user-guide/quick_start.html)
- * [conda](https://docs.conda.io/en/latest/miniconda.html) or [mamba](https://github.com/conda-forge/miniforge#mambaforge)
+Make sure `~/local/scripts` is in your `PATH` variable.
 
+You should have SSH ControlMaster enabled in your `~/.ssh/config` file for this
+to work fully on the cluster. The script will manually multiplex otherwise, but
+this is not recommended.
 
-### Usage
+See https://en.wikibooks.org/wiki/OpenSSH/Cookbook/Multiplexing
 
- 1. Clone this repository
+### First run of `vscode_minerva`
 
-    ```bash
-    git clone git@github.com:grst/rstudio-server-conda.git
-    cd rstudio-server-conda/singularity
-    ```
-   
- 2. Activate the target conda env or set the environment variable `CONDA_PREFIX`
-    to point to the location of the conda env. 
-    
- 3. Check the `run_singularity.sh` script. In particular, you may need to add additional bind mounts 
-    (e.g. a global data directory).   
- 
- 3. Execute the `run_singularity.sh` script. It will automatically build the container if it is not available. 
- 
-    ```bash    
-    PORT=8787 PASSWORD=notsafe ./run_singularity.sh
-    ```
-    
- 4. Log into Rstudio
+In order to ease the process of installing extensions and changing VSCode
+settings, I have provided a script that installs extensions and provides good
+starting settings. When in VSCode, press `⌥ + SHIFT + ~` to open a terminal,
+then run `~/.setup_vscode.sh`. The script will provide further instructions.
 
-     * open rstudio server at `http://localhost:8787` (or whatever port you specified)
-     * login with your default username and the password you specified via the `PASSWORD` environment variable. 
+### Updates
 
-## Running Rstudio Server with Podman/Docker
+To update the scripts, go to `~/local/src/minerva_servers` and run `git pull`.
+Then add `--update` to your command the next time you run each script.
 
-This approach is similar to [Singularity](#running-rstudio-server-with-singularity), but uses
-Docker or Podman and a `docker-compose.yml` file instead. 
+**NOTE:** Any changes you make to the shell configurations for the
+`vscode_minerva` script will be overwritten when using `--update`, so make a
+backup if you have changed them.
 
-### Known limitations
- * No access to shared group directories ([#14](https://github.com/grst/rstudio-server-conda/issues/14))
+## Running the scripts
 
-### Prerequisites
+To see usage instructions on the command-line run `SCRIPT_NAME -h` or
+`SCRIPT_NAME --help`.
 
- * [Docker](https://www.docker.com/) or [Podman](https://podman.io/)
- * [docker-compose](https://github.com/docker/compose) or [podman-compose](https://github.com/containers/podman-compose)
- * [conda](https://docs.conda.io/en/latest/miniconda.html) or [mamba](https://github.com/conda-forge/miniforge#mambaforge)
+### Cluster job resources
 
-### Usage
+Both scripts have identical settings for cluster job submission.
+The defaults are as follows:
 
-1. Clone this repository
+* 4 cores
+* 4000 MB of memory per core (16000 MB total)
+* 12 hours of walltime
+* LSF accounts are chosen with the following priority:
+  1. `acc_LOAD` if available
+  2. An account with access to `CATS`
+  3. Any other available account
 
-   ```bash
-   git clone git@github.com:grst/rstudio-server-conda.git
-   ```
+All of these settings can be overridden:
 
-2. Build the rstudio container (fetches the latest version of [rocker/rstudio](https://hub.docker.com/r/rocker/rstudio) and adds some custom scripts)
+* Use `-n [NUMBER OF CORES]` to set the number of cores to request.
+  The maximum number of cores is 64.
+* Use `-W H[H[H]]:MM` to set walltime. E.g. `-W 4:00` for 4 hours and
+  `-W 336:00` for 336 hours. The maximum walltime is 336 hours.
+* Use `-m [MEMORY IN MB]` to set memory per core. The maximum memory request
+  is 2 TB, but there are only 2 servers supporting that request. There are 92
+  servers supporting up to 1.5 TB, but we recommend keeping your request under
+  190,000 MB of *total* memory. Remember that this request is per-core.
+* Use `-P [LSF account]` to select a different LSF account.
 
-   ```bash
-   cd rstudio-server-conda/docker
-   docker-compose build     # or podman-compose
-   ```
+The scripts will automatically select the optimal queues and resource requests
+for most jobs based on memory and time requested. If you need GPU or other
+custom requirements, you can add additional resource requests
+(see command help). The script will always request `-R himem` when necessary and
+ensure all cores are on the same node.
 
-3. Copy the docker-compose.yml file into your project directory and adjust the paths.
+***If you exceed the requested resources, your application will be closed by the
+cluster!***
 
-   You may want to add additional volumes with your data. 
+### Other features
 
-   ```yml
-   [...]
-      ports:
-         # port on the host : port in the container (the latter is always 8787)
-         - "8889:8787"
-       volumes:
-         # mount conda env into exactely the same path as on the host system - some paths are hardcoded in the env.
-         - /home/sturm/anaconda3/envs/R400:/home/sturm/anaconda3/envs/R400
-         # Share settings between rstudio instances
-         - /home/sturm/.local/share/rstudio/monitored/user-settings:/root/.local/share/rstudio/monitored/user-settings
-         # mount the working directory containing your R project.
-         - /home/sturm/projects:/projects
-       environment:
-         # password used for authentication
-         - PASSWORD=notsafe
-         # repeat the path of the conda environment (must be identical to the path in "volumes")
-         - CONDAENV=/home/sturm/anaconda3/envs/R400
-   ```
+* **Anaconda envs:** The servers will run using your default Anaconda
+  environment unless otherwise specified using `-C [CONDA ENV]`
+  or `--conda [CONDA ENV]`.
+* **Session names:**  You can run multiple instances of the servers by adding
+  `-S [SESSION NAME]` to the command.
+* **Isolation:** The scripts run with an optimal amount of environmental
+  isolation by default. You can change that using `--isolation`.
+* **Config files:** If a configuration file is specified in `~/.vsc_config` for
+  VSCode or `~/.rs_config` for RStudio, specified env variables will override
+  the defaults or variables set on the command line. Use this with caution.
+  You can also specify configuration files by using `-c` on the command line.
 
-4. Run your project-specific instance of Rstudio-server
+## Usage instructions
 
-   ```bash
-   docker-compose up 
-   ```
+### `vscode_minerva --help`
 
-5. Log into Rstudio
+```raw
+vscode_minerva: Script to start a VSCode server on Minerva from a local computer
 
- * Open your server at `http://localhost:8889` (or whatever port you specified)
- * Login with the user `rstudio` (when using Docker) or `root` (when using Podman) and the password you specified 
-   in the `docker-compose.yml`. If you are using Podman and login with `rstudio` you won't have permissions to 
-   access the mounted volumes. 
+Usage: vscode_minerva [options]
 
+Options:
 
-## Running Locally
+  -P | --project    1st available    LSF project name
 
-With this approach a locally installed Rstudio server is ran such that it uses the conda env. 
+Optional arguments:
 
-### Known limitations
- * no authentication ([#3](https://github.com/grst/rstudio-server-conda/issues/3)). Use this approach only in a secure network! 
+  -n | --numcores   4                Number of CPU cores to be used on
+                                      the cluster
+  -q | --queue      guess            Queue to be used on the cluster
+  -W | --runtime    12               Run time limit for the server in hours
+                                      and minutes H[H[H]]:MM
+  -m | --memory     4000             Memory limit in MB per core
+  -R | --resource                    Extra resource request like "himem"
+  -b | --browser                     Open browser automatically
+  -c | --config     ~/.vsc_config    Configuration file for specifying options
+  -h | --help                        Display help for this script and quit
+  -i | --interval   30               Time interval (sec) for checking if the job
+                                      on the cluster already started
+  -v | --version                     Display version of the script and exit
+  -s | --server     minerva          SSH arguments for connecting to the server:
+                                      Will default to "minerva", then "chimera".
+                                      server name from .ssh/config, or e.g.
+                                      user@minerva.hpc.mssm.edu
+  -S | --session                     Session name to run multiple servers
+  -C | --conda      shell default    Conda env for running VSCode
+       --isolated   none             Run VSCode server without home directory
+                                      or environment variables (deprecated)
+       --isolation  none             Amount of container isolation: if 'full',
+                                      run VSCode server without home directory
+                                      or environment variables. If 'partial',
+                                      same as full but open shell outside of
+                                      sandbox. If 'none', do not isolate.
+  -I | --image      dload to work    Singularity image to use for the server.
+                                      Downloaded automatically if not specified.
+  --debug                            Print debug messages
+  --update                           Update vscode and singularity image
+  --remote-start                     Connect to job started from cluster
 
-### Prerequisites
-* [rstudio server](https://www.rstudio.com/products/rstudio/download-server/) installed locally
-* [conda](https://docs.conda.io/en/latest/miniconda.html) or [mamba](https://github.com/conda-forge/miniforge#mambaforge)
+Examples:
 
-### Usage
+  vscode_minerva -n 4 -W 04:00 -m 2048
 
-1. Clone this repo
+  vscode_minerva --numcores 2 --runtime 01:30 --memory 2048
 
-   ```
-   git clone https://github.com/grst/rstudio-server-conda.git
-   ```
+  vscode_minerva -c /Users/bfh/.vsc_config
 
-2. Run rstudio server in the conda env
+Format of configuration file:
 
-   ```
-   cd rstudio-server-conda/local
-   conda activate my_project
-   ./start_rstudio_server.sh 8787  # use any free port number here. 
-   ```
-   
-3. Connect to Rstudio
+S_NUM_CPU=1               # Number of CPU cores to be used on the cluster
+S_RUN_TIME="01:00"        # Run time limit for the server in hours and
+                            #   minutes H[H[H]]:MM
+S_MEM_PER_CPU_CORE=1024   # Memory limit in MB per core
+S_WAITING_INTERVAL=60     # Time interval to check if the job on the cluster
+                            #   already started
+S_QUEUE="premium"         # LSF queue to be used on the cluster
+S_SESSION=""              # Session name to run multiple servers
+S_ACCT="acc_SOMETHING"    # LSF account to be used on the cluster
+S_HOSTNAME="minerva"      # SSH host or username@host for connection
 
-   You should now be able to connect to rstudio server on the port you specify. 
-   **If an R Session has previously been running, you'll need to rstart the Rsession now**. 
+You should have SSH ControlMaster enabled in your ~/.ssh/config file for this to
+work fully on the cluster. The script will manually multiplex otherwise, but
+this is not recommended.
 
-   Obviously, if your env does not have a version of `R` installed, this will either not 
-   work at all, or fall back to the system-wide R installation. 
+See https://en.wikibooks.org/wiki/OpenSSH/Cookbook/Multiplexing
+```
 
+### `rstudio_minerva --help`
 
-### How it works
-* Rstudio server, can be started in non-daemonized mode by each user individually on a custom port (similar to a jupyter notebook). This instance can then run in a conda environment:
+```raw
+rstudio_minerva: Script to start a RStudio server on Minerva from a local computer
 
-   ```
-   > conda activate my_project
-   > /usr/lib/rstudio-server/bin/rserver \
-      --server-daemonize=0 \
-      --www-port 8787 \
-      --rsession-which-r=$(which R) \
-      --rsession-ld-library-path=$CONDA_PREFIX/lib
-   ```
-   
-* To avoid additional problems with library paths, also `rsession` needs to run within the conda environment. This is achieved by wrapping `rsession` into the [rsession.sh](https://github.com/grst/rstudio-server-conda/blob/master/local/rsession.sh) script. The path to the wrapped `rsession` executable can be passed to `rserver` as command line argument. 
+Usage: rstudio_minerva [options]
 
-   ```
-   rserver # ...
-       --rsession-path=rsession.sh
-   ```
+Options:
 
+  -P | --project    1st available    LSF project name
 
-* When using multiple users a unique `secret-cookie-key` has to be generated for each user. The path to the secret cookie key can be passed to `rserver` as a command line parameter.
+Optional arguments:
 
-   ```
-   uuid > /tmp/rstudio-server/${USER}_secure-cookie-key
-   rserver # ...
-     --secure-cookie-key-file /tmp/rstudio-server/${USER}_secure-cookie-key
-   ```
+  -n | --numcores   4                Number of CPU cores to be used on
+                                      the cluster
+  -q | --queue      guess            Queue to be used on the cluster
+  -W | --runtime    12               Run time limit for the server in hours
+                                      and minutes H[H[H]]:MM
+  -m | --memory     4000             Memory limit in MB per core
+  -R | --resource                    Extra resource request like "himem"
+  -b | --browser                     Open browser automatically
+  -c | --config     ~/.rs_config     Configuration file for specifying options
+  -h | --help                        Display help for this script and quit
+  -i | --interval   30               Time interval (sec) for checking if the job
+                                      on the cluster already started
+  -v | --version                     Display version of the script and exit
+  -s | --server     minerva          SSH arguments for connecting to the server:
+                                      Will default to "minerva", then "chimera".
+                                      server name from .ssh/config, or e.g.
+                                      user@minerva.hpc.mssm.edu
+  -S | --session                     Session name to run multiple servers
+  -C | --conda      shell default    Conda env for running rstudio
+       --isolated   partial          Run RStudio server without home directory
+                                      or environment variables (deprecated)
+       --isolation  partial          Amount of container isolation: if 'full',
+                                      run RStudio server without home directory
+                                      or environment variables. If 'partial',
+                                      same as full but open shell outside of
+                                      sandbox. If 'none', do not isolate.
+  -I | --image      dload to work    Singularity image to use for the server.
+                                      Downloaded automatically if not specified.
+  --debug                            Print debug messages
+  --update                           Update the rstudio server singularity image
+  --remote-start                     Connect to job started from cluster
 
+Examples:
+
+  rstudio_minerva -n 4 -W 04:00 -m 2048
+
+  rstudio_minerva --numcores 2 --runtime 01:30 --memory 2048
+
+  rstudio_minerva -c /Users/bfh/.rs_config
+
+Format of configuration file:
+
+S_NUM_CPU=1               # Number of CPU cores to be used on the cluster
+S_RUN_TIME="01:00"        # Run time limit for the server in hours and
+                            #   minutes H[H[H]]:MM
+S_MEM_PER_CPU_CORE=1024   # Memory limit in MB per core
+S_WAITING_INTERVAL=60     # Time interval to check if the job on the cluster
+                            #   already started
+S_QUEUE="premium"         # LSF queue to be used on the cluster
+S_SESSION=""              # Session name to run multiple servers
+S_ACCT="acc_SOMETHING"    # LSF account to be used on the cluster
+S_HOSTNAME="minerva"      # SSH host or username@host for connection
+
+You should have SSH ControlMaster enabled in your ~/.ssh/config file for this to
+work fully on the cluster. The script will manually multiplex otherwise, but
+this is not recommended.
+
+See https://en.wikibooks.org/wiki/OpenSSH/Cookbook/Multiplexing
+```

@@ -2,7 +2,7 @@
 
 ###############################################################################
 #                                                                             #
-#  Script to run on a local computer to start a VSCode server on Minerva and  #
+#  Script to run on a local computer to start a RStudio server on Minerva and #
 #  connect to it with a local browser                                         #
 #                                                                             #
 #  Main author     : Brian Fulton-Howard                                      #
@@ -15,10 +15,7 @@
 #  Change history  :                                                          #
 #                                                                             #
 #  15.04.2024    Move singularity image paths                                 #
-#  05.04.2024    Automated local port selection for remote start,             #
-#                editable config files, improved messages, and fixes to       #
-#                vscode configuration script                                  #
-#  24.03.2024    Adapt to run vscode server in a container environment        #
+#  24.03.2024    Roll in enhancements from new vscode version of script       #
 #  21.03.2024    Isolation by default without isolation in terminal           #
 #  20.03.2024    Only log at debug level in Rstudio if --debug; Allow use     #
 #                of Github Copilot                                            #
@@ -91,8 +88,8 @@ S_SESSION=""
 # 2. Command line options overwrite defaults
 # 3. Config file options  overwrite command line options
 
-# Configuration file default    : $HOME/.vsc_config
-S_CONFIG_FILE="$HOME/.vsc_config"
+# Configuration file default    : $HOME/.rs_config
+S_CONFIG_FILE="$HOME/.rs_config"
 
 # Number of CPU cores default   : 4 CPU cores
 S_NUM_CPU=4
@@ -118,7 +115,7 @@ S_IMAGE="default"
 # Debugging mode
 S_DEBUG=0
 
-# Update vscode server
+# Update rstudio server
 S_UPDATE=0
 
 # Do not open browser by default
@@ -164,7 +161,7 @@ echodebug () {
 
 function display_help {
 cat <<-EOF
-$0: Script to start a VSCode server on Minerva from a local computer
+$0: Script to start a RStudio server on Minerva from a local computer
 
 Usage: $(basename "$0") [options]
 
@@ -182,7 +179,7 @@ Optional arguments:
   -m | --memory     4000             Memory limit in MB per core
   -R | --resource                    Extra resource request like "himem"
   -b | --browser                     Open browser automatically
-  -c | --config     ~/.vsc_config    Configuration file for specifying options
+  -c | --config     ~/.rs_config     Configuration file for specifying options
   -h | --help                        Display help for this script and quit
   -i | --interval   30               Time interval (sec) for checking if the job
                                       on the cluster already started
@@ -192,18 +189,18 @@ Optional arguments:
                                       server name from .ssh/config, or e.g.
                                       user@minerva.hpc.mssm.edu
   -S | --session                     Session name to run multiple servers
-  -C | --conda      shell default    Conda env for running VSCode
-       --isolated   none             Run VSCode server without home directory
+  -C | --conda      shell default    Conda env for running rstudio
+       --isolated   partial          Run RStudio server without home directory
                                       or environment variables (deprecated)
-       --isolation  none             Amount of container isolation: if 'full',
-                                      run VSCode server without home directory
+       --isolation  partial          Amount of container isolation: if 'full',
+                                      run RStudio server without home directory
                                       or environment variables. If 'partial',
                                       same as full but open shell outside of
                                       sandbox. If 'none', do not isolate.
   -I | --image      dload to work    Singularity image to use for the server.
                                       Downloaded automatically if not specified.
   --debug                            Print debug messages
-  --update                           Update vscode and singularity image
+  --update                           Update the rstudio server singularity image
   --remote-start                     Connect to job started from cluster
 
 Examples:
@@ -212,7 +209,7 @@ Examples:
 
   $(basename $0) --numcores 2 --runtime 01:30 --memory 2048
 
-  $(basename $0) -c $HOME/.vsc_config
+  $(basename $0) -c $HOME/.rs_config
 
 Format of configuration file:
 
@@ -253,7 +250,7 @@ while [[ $# -gt 0 ]]; do
     display_help
     ;;
     -v|--version)
-    echo -e "vscode_minerva version: $S_VERSION\n"
+    echo -e "rstudio_minerva version: $S_VERSION\n"
     exit
     ;;
     -n|--numcores)
@@ -362,10 +359,10 @@ find_port() {
 
 if [[ $S_REMOTE_START != "null" ]]; then
   # find free local port
-  S_LOCAL_PORT=$(find_port 18890)
+  S_LOCAL_PORT=$(find_port 18990)
   S_REMOTE_IP=$(echo $S_REMOTE_START | cut -d: -f1)
   S_REMOTE_PORT=$(echo $S_REMOTE_START | cut -d: -f2)
-  S_REMOTE_TOKEN=$(echo $S_REMOTE_START | cut -d: -f3)
+  S_PASSWORD=$(echo $S_REMOTE_START | cut -d: -f3)
   echoinfo "Connecting to remote session at $S_REMOTE_IP:$S_REMOTE_PORT"
   ssh $S_HOSTNAME -L $S_LOCAL_PORT:$S_REMOTE_IP:$S_REMOTE_PORT -fNT
   if [[ $? -ne 0 ]]; then
@@ -373,7 +370,8 @@ if [[ $S_REMOTE_START != "null" ]]; then
     exit 1
   fi
   echoinfo "Please open the following URL in your browser:"
-  echoinfo "http://localhost:$S_LOCAL_PORT?tkn=$S_REMOTE_TOKEN"
+  echoinfo "http://localhost:$S_LOCAL_PORT"
+  echoinfo "The password is $S_PASSWORD"
   exit 0
 fi
 
@@ -393,18 +391,18 @@ if [[ $S_ISOLATED_CLASSIC -eq 1 ]]; then
     echoerror "Cannot use both --isolated and --isolation. Please try again\n"
     display_help
   fi
-  echowarn "The --isolated option is deprecated. VSCode is now mostly isolated"
+  echowarn "The --isolated option is deprecated. RStudio is now mostly isolated"
   echowarn "by default. Use --isolation to specify the amount of isolation."
   echowarn "The equivalent of --isolated is '--isolation full' and the old"
-  echowarn "default is '--isolation none'."
+  echowarn "default is '--isolation partial'."
   echowarn "The --isolated option will be removed in a future version."
   S_ISOLATED=2
   echoinfo "Running with full container isolation"
 fi
 
 if [ -z ${S_ISOLATED+x} ]; then
-  S_ISOLATED=0
-  echoinfo "Running with default no container isolation"
+  S_ISOLATED=1
+  echoinfo "Running with default partial container isolation"
 elif [[ $S_ISOLATED -eq 0 ]]; then
   echoinfo "Running without container isolation"
 elif [[ $S_ISOLATED -eq 1 ]]; then
@@ -469,7 +467,7 @@ if [[ "$S_HOSTNAME" == "minervarun" ]]; then
   S_USERNAME=$USER
   # make a function to run heredoc locally
   eval_heredoc() {
-    eval "$@"
+    bash -s "$@"
   }
 else
   echoinfo "Connecting to $S_HOSTNAME"
@@ -480,20 +478,18 @@ else
 fi
 
 echoinfo "Setting up directories and files"
-S_WORKDIR="/hpc/users/$S_USERNAME/minerva_jobs/code_container"
-S_TMP=/tmp/${S_USERNAME}${S_SESSION}_VSCode
+S_WORKDIR="/hpc/users/$S_USERNAME/minerva_jobs/rstudio"
+S_TMP=/tmp/${S_USERNAME}${S_SESSION}_RStudio_1
 
-S_BASE_RECONNECT=".reconnect_info_vsc$S_SESSION"
+S_BASE_RECONNECT=".reconnect_info_rs$S_SESSION"
 S_FILE_RECONNECT="$S_WORKDIR/$S_BASE_RECONNECT"
-S_FILE_JOB="$S_WORKDIR/code$S_SESSION.lsf"
-S_FILE_IP="$S_WORKDIR/vscip$S_SESSION"
-S_FILE_BASHPROF="$S_WORKDIR/bash_profile"
-S_FILE_BASHRC="$S_WORKDIR/bashrc"
-S_FILE_FISHCONFIG="$S_WORKDIR/config.fish"
-S_FILE_ZSHRC="$S_WORKDIR/zshrc"
-SVSC_DIR_CONFIG="/hpc/users/$S_USERNAME/.config/CodeContainer"
-SVSC_DIR_CONFIG_DOTVSC="$S_WORKDIR/serverconf"
-SVSC_APP="$S_WORKDIR/code"
+S_FILE_PASSWORD="$S_WORKDIR/.rstudio_onthefly_password"
+S_FILE_JOB="$S_WORKDIR/rstudio$S_SESSION.lsf"
+S_FILE_IP="$S_WORKDIR/rsip$S_SESSION"
+S_FILE_LOGCONF="$S_WORKDIR/logging.conf"
+S_FILE_BASHPROF="$S_WORKDIR/bash_profile$S_SESSION"
+S_DIR_LOGCONF="$S_WORKDIR/serverlogs/$S_SESSION"
+S_DIR_CONFIG="/hpc/users/$S_USERNAME/.config/rstudio"
 
 ###############################################################################
 # Check directories, files, image, and password                               #
@@ -506,323 +502,104 @@ if [[ ! -d $S_WORKDIR ]]; then
   echo $(echoinfo "Creating working directory")
   mkdir -p $S_WORKDIR
 fi
-if [[ ! -d $SVSC_DIR_CONFIG ]]; then
-  echo $(echoinfo "Creating config directory and files")
-  mkdir -p $SVSC_DIR_CONFIG
+if [[ ! -d $S_DIR_LOGCONF ]]; then
+  echo $(echoinfo "Creating log directory")
+  mkdir -p $S_DIR_LOGCONF
 fi
-if [[ ! -d $SVSC_DIR_CONFIG_DOTVSC ]]; then
-  echo $(echoinfo "Creating config directory and files")
-  mkdir -p $SVSC_DIR_CONFIG_DOTVSC
-fi
-if [[ ! -f $S_WORKDIR/.config_template.json ]] || [[ $S_UPDATE -eq 1 ]]; then
-  echo $(echoinfo "Creating config template file")
-  remote_shell=\$(getent passwd \$USER | awk -F: '{print \$7}' | xargs basename)
-  cat <<EOFF > $S_WORKDIR/.config_template.json
-{
-    "terminal.integrated.profiles.linux": {
-        "bash": {
-            "path": "bash",
-            "icon": "terminal-bash",
-            "args": ["--rcfile", "~/.bash_profile"]
-        },
-        "bash-minerva": {
-            "path": "bash",
-            "icon": "terminal-bash",
-            "args": ["-c", ". ~/.bash_profile; minerva"]
-        },
-        "zsh-minerva": {
-            "path": "zsh",
-            "args": ["-c", ". ~/.zshrc; minerva"]
-        },
-        "fish": {
-            "path": "fish"
-        },
-        "fish-minerva": {
-            "path": "fish",
-            "args": ["-c", "minerva"]
-        }
-    },
-    "terminal.integrated.scrollback": 100000,
-    "r.bracketedPaste": true,
-    "r.rpath.linux": "/myhome/.launch_r.sh",
-    "r.rterm.linux": "/myhome/.launch_radian.sh",
-    "r.rterm.option": [],
-    "vsicons.dontShowNewVersionMessage": true,
-    "terminal.integrated.defaultProfile.linux": "\$remote_shell",
-}
-EOFF
-fi
-if [[ ! -f $S_WORKDIR/.recommended_packages.txt ]] || [[ $S_UPDATE -eq 1 ]]; then
-  echo $(echoinfo "Creating recommended packages file")
-  cat <<EOFF > $S_WORKDIR/.recommended_packages.txt
-formulahendry.code-runner
-REditorSupport.R
-janisdd.vscode-edit-csv
-grapecity.gc-excelviewer
-yzhang.markdown-all-in-one
-ms-python.python
-ms-toolsai.jupyter
-quarto.quarto
-snakemake.snakemake-lang
-vscode-icons-team.vscode-icons
-donjayamanne.python-environment-manager
-pnp.polacode
-ms-vsliveshare.vsliveshare
-github.remotehub
-donjayamanne.githistory
-ms-toolsai.datawrangler
-onnovalkering.vscode-singularity
-EOFF
-fi
-if [[ ! -f $S_WORKDIR/.setup_vscode.sh ]] || [[ $S_UPDATE -eq 1 ]]; then
-  echo $(echoinfo "Creating setup script")
-  cat <<'EOFF' > $S_WORKDIR/.setup_vscode.sh
-#!/usr/bin/env bash
-echo "Installing recommended extensions"
-while read -r line; do
-  code --install-extension "\$line"
-done < ~/.recommended_packages.txt
-
-echo "To set up the configuration for VSCode, open the command palette with"
-printf "Cmd+Shift+P and type Preferences: Open Remote Settings \x28JSON\x29\n"
-echo "Then copy and paste the following:"
-sed "s|/myhome|\$HOME|" ~/.config_template.json 
-EOFF
-  chmod +x $S_WORKDIR/.setup_vscode.sh
+if [[ ! -d $S_DIR_CONFIG ]]; then
+  echo $(echoinfo "Creating config directory")
+  mkdir -p $S_DIR_CONFIG
 fi
 EOF
 
-S_CONTENTS_BASHPROF=$(cat <<EOF
-# Set prompt to standard bash prompt instead of the one from the image
-export PS1='\u@\h:\w\$ '
-source \$HOME/.bashrc
-minerva() {
-  if [[ \$PWD == "/myhome" ]]; then
-    minervadir='\$HOME'
+
+# Check for password
+create_rstudio_passwd_on_file () {
+  password1='1'
+  password2='thisisnotthepassword'
+
+  passprompt="  Set a runtime password for RStudio (not network password):"
+  read -sp "$passprompt" password1
+  printf "\n"
+  while [[ $password1 = "" ]]; do
+    echoerror "  Password is empty, please input again... "
+  done
+
+  counter=0
+  while [[ $password1 != $password2 ]]; do
+    read -sp "  Confirm password: " password2
+    printf "\n"
+    if [[ $password1 != $password2 ]]; then
+      echoerror "  Passwords do not agree, try again..."
+      let counter+=1
+
+      if [[ $counter -lt 3 ]]; then
+        continue;
+      else
+        echoerror "  Failed 3 times, aborting..."
+        exit 1;
+      fi
+    fi
+  done
+
+  password=$password1
+
+  # write to file
+  if [[ "$S_HOSTNAME" == "minervarun" ]]; then
+    mkdir -p $(dirname $S_FILE_PASSWORD)
+    printf "# Password generated by rstudio_minerva\n" > $S_FILE_PASSWORD
+    printf "export PASSWORD=$password\n" >> $S_FILE_PASSWORD
   else
-    minervadir=\$PWD
+    ssh $S_HOSTNAME "mkdir -p $(dirname $S_FILE_PASSWORD)"
+    ssh $S_HOSTNAME "cat > $S_FILE_PASSWORD" <<<cat <<EOF
+# Password generated by rstudio_minerva"
+export PASSWORD=$password
+EOF
   fi
-  ssh -o StrictHostKeyChecking=accept-new -t \$(hostname -f) \\
-    "conda activate \$S_CONDAENV; ml proxies; cd \$minervadir; bash"
-  exit 0
-}
-if [[ -d "/sc/arion/projects/load/scripts" ]]; then
-  export PATH="/sc/arion/projects/load/scripts:\$PATH"
-fi
-alias bblame='ssh -t li03c04 bblame'
-alias ijob='ssh -t li03c04 ijob'
-alias regjob='ssh -t li03c04 regjob'
-alias ll='ls -l'
-EOF
-)
-
-# if ! [[ -d ~/.vscode-server/extensions/ ]] || [[ \$(ls -1 ~/.vscode-server/extensions/ | wc -l) -lt 4 ]]; then
-#   echo To install recommended VSCode extensions and display instructions for
-#   echo configuring VSCode, please run ~/.setup_vscode.sh
-# fi
-
-S_BSUBCMD=/hpc/lsf/10.1/linux3.10-glibc2.17-x86_64/bin/bsub
-
-S_CONTENTS_BASHRC=$(cat <<EOF
-bsub() {
-    bsubcmd=$S_BSUBCMD
-    if module is-loaded lsf && module is-loaded CPAN &> /dev/null; then
-        \$bsubcmd \$@ 2> >(grep -v "Perl_xs_version_bootcheck" >&2)
-    else
-        echo "Please enable LSF by running 'lsf_enable'"
-    fi
 }
 
-# >>> conda initialize >>>
-# !! Contents within this block are managed by 'conda init' !!
-__conda_setup="\$('/opt/conda/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
-if [ \$? -eq 0 ]; then
-    eval "\$__conda_setup"
-else
-    if [ -f "/opt/conda/etc/profile.d/conda.sh" ]; then
-        . "/opt/conda/etc/profile.d/conda.sh"
-    else
-        export PATH="/opt/conda/bin:\$PATH"
+check_set_runtime_password () {
+  if [[ "$S_HOSTNAME" == "minervarun" ]]; then
+    if ! test -e "$S_FILE_PASSWORD" ; then
+      echoinfo "$S_FILE_PASSWORD is not found, we need to create it."
+      create_rstudio_passwd_on_file
     fi
-fi
-unset __conda_setup
-
-if [ -f "/opt/conda/etc/profile.d/mamba.sh" ]; then
-    . "/opt/conda/etc/profile.d/mamba.sh"
-fi
-# <<< conda initialize <<<
-
-export PROMPT_COMMAND=""
-conda activate \$S_CONDAENV
-
-alias lsf_enable="ml lsf CPAN"
-alias lsf_disable="ml -lsf -CPAN"
-EOF
-)
-
-# if test -d ~/.vscode-server/extensions/
-#   set vsc_numext (ls -1 ~/.vscode-server/extensions/ | wc -l)
-# else
-#   set vsc_numext 0
-# end
-# if test \$vsc_numext -lt 4
-#   echo To install recommended VSCode extensions and display instructions for
-#   echo configuring VSCode, please run ~/.setup_vscode.sh
-# end
-
-S_CONTENTS_FISHCONFIG=$(cat <<EOF
-if status is-interactive
-    # Commands to run in interactive sessions can go here
-end
-
-# >>> conda initialize >>>
-# !! Contents within this block are managed by 'conda init' !!
-if test -f /opt/conda/bin/conda
-    eval /opt/conda/bin/conda "shell.fish" "hook" \$argv | source
-else
-    if test -f "/opt/conda/etc/fish/conf.d/conda.fish"
-        . "/opt/conda/etc/fish/conf.d/conda.fish"
-    else
-        set -x PATH "/opt/conda/bin" \$PATH
-    end
-end
-
-if test -f "/opt/conda/etc/fish/conf.d/mamba.fish"
-    source "/opt/conda/etc/fish/conf.d/mamba.fish"
-end
-# <<< conda initialize <<<
-function minerva
-  if test \$PWD = "/myhome"
-    set minervadir '\$HOME'
-  else
-    set minervadir \$PWD
-  end
-  ssh -o StrictHostKeyChecking=accept-new -t (hostname) \\
-    "conda activate \$S_CONDAENV; ml proxies; cd \$minervadir; fish"
-  exit 0
-end
-
-function bsub
-  set bsubcmd $S_BSUBCMD
-  if type -q module; and module is-loaded lsf; and module is-loaded CPAN
-    bash -c "\$bsubcmd \$argv 2> >(grep -v 'Perl_xs_version_bootcheck' >&2)"
-  else
-    echo "Please enable LSF by running 'lsf_enable'"
-  end
-end
-
-if test -d "/sc/arion/projects/load/scripts"
-  set -x PATH "/sc/arion/projects/load/scripts" \$PATH
-end
-
-alias bblame 'ssh -t li03c04 bblame'
-alias ijob 'ssh -t li03c04 ijob'
-alias regjob 'ssh -t li03c04 regjob'
-alias lsf_enable="ml lsf CPAN"
-alias lsf_disable="ml -lsf -CPAN"
-
-conda activate \$S_CONDAENV
-EOF
-)
-
-S_CONTENTS_ZSHRC=$(cat <<EOF
-bsub() {
-    bsubcmd=$S_BSUBCMD
-    if module is-loaded lsf && module is-loaded CPAN &> /dev/null; then
-        \$bsubcmd \$@ 2> >(grep -v "Perl_xs_version_bootcheck" >&2)
-    else
-        echo "Please enable LSF by running 'lsf_enable'"
-    fi
-}
-
-# Set prompt to standard zsh prompt instead of the one from the image
-export PROMPT_COMMAND=""
-export PROMPT='%n@%m:%~%# '
-
-# >>> conda initialize >>>
-# !! Contents within this block are managed by 'conda init' !!
-__conda_setup="\$('/opt/conda/bin/conda' 'shell.zsh' 'hook' 2> /dev/null)"
-if [ \$? -eq 0 ]; then
-    eval "\$__conda_setup"
-else
-    if [ -f "/opt/conda/etc/profile.d/conda.sh" ]; then
-        . "/opt/conda/etc/profile.d/conda.sh"
-    else
-        export PATH="/opt/conda/bin:\$PATH"
-    fi
-fi
-unset __conda_setup
-
-if [ -f "/opt/conda/etc/profile.d/mamba.sh" ]; then
-    . "/opt/conda/etc/profile.d/mamba.sh"
-fi
-# <<< conda initialize <<<
-
-minerva() {
-  if [[ \$PWD == "/myhome" ]]; then
-    minervadir='\$HOME'
-  else
-    minervadir=\$PWD
+  elif ! ssh $S_HOSTNAME "test -e \"$S_FILE_PASSWORD\""; then
+    echoinfo "$S_FILE_PASSWORD is not found, we need to create it."
+    create_rstudio_passwd_on_file
   fi
-  ssh -o StrictHostKeyChecking=accept-new -t \$(hostname -f) \\
-    "conda activate \$S_CONDAENV; ml proxies; cd \$minervadir; zsh"
-  exit 0
 }
 
-if [[ -d "/sc/arion/projects/load/scripts" ]]; then
-  export PATH="/sc/arion/projects/load/scripts:\$PATH"
-fi
-alias bblame='ssh -t li03c04 bblame'
-alias ijob='ssh -t li03c04 ijob'
-alias regjob='ssh -t li03c04 regjob'
-alias ll='ls -l'
-alias lsf_enable="ml lsf CPAN"
-alias lsf_disable="ml -lsf -CPAN"
+check_set_runtime_password
 
-conda activate \$S_CONDAENV
+# Check rstudio config files
+
+eval_heredoc <<EOF
+if ! test -e "$S_WORKDIR/database.conf"; then
+  printf "provider=sqlite\n" > $S_WORKDIR/database.conf
+  printf "directory=/var/lib/rstudio-server\n" >> $S_WORKDIR/database.conf
+fi
+if ! test -e "$S_WORKDIR/rsession.conf"; then
+  printf "# add your configuration here\n" > $S_WORKDIR/rsession.conf
+  printf "session-timeout-minutes=9000\n" >> $S_WORKDIR/rsession.conf
+  printf "copilot-enabled=1\n" >> $S_WORKDIR/rsession.conf
+  printf "copilot-proxy-url=http://172.28.7.1:3128\n" >> $S_WORKDIR/rsession.conf
+fi
+if ! test -e "$S_WORKDIR/rserver.conf"; then
+  printf "# add your configuration here\n" > $S_WORKDIR/rserver.conf
+  printf "auth-timeout-minutes=0\n" >> $S_WORKDIR/rserver.conf
+  printf "auth-stay-signed-in-days=30\n" >> $S_WORKDIR/rserver.conf
+fi
 EOF
-)
-
-if [[ $S_HOSTNAME == "minervarun" ]] && \
-   ( [[ $S_UPDATE -eq 1 ]] || \
-     [ ! -f $S_FILE_BASHPROF ] || \
-     [ ! -f $S_FILE_BASHRC ] ||\
-     [ ! -f $S_FILE_FISHCONFIG ] || \
-     [ ! -f $S_FILE_ZSHRC ] ); then
-  # Store the docstring in $S_FILE_LOGCONF locally
-  echoinfo "Locally copying config files on minerva"
-  echo "$S_CONTENTS_BASHPROF" > "$S_FILE_BASHPROF"
-  echo "$S_CONTENTS_BASHRC" > "$S_FILE_BASHRC"
-  echo "$S_CONTENTS_FISHCONFIG" > "$S_FILE_FISHCONFIG"
-  echo "$S_CONTENTS_ZSHRC" > "$S_FILE_ZSHRC"
-elif [[ $S_UPDATE -eq 1 ]] || ssh $S_HOSTNAME \
-    "[ ! -f $S_FILE_BASHPROF ] || \
-     [ ! -f $S_FILE_BASHRC ] || \
-     [ ! -f $S_FILE_FISHCONFIG ] || \
-     [ ! -f $S_FILE_ZSHRC ]"; then
-  # Copy the docstring to $S_FILE_LOGCONF remotely
-  echoinfo "Copying config and files to $S_HOSTNAME"
-  ssh -T $S_HOSTNAME "cat > '$S_FILE_BASHPROF'" <<< "$S_CONTENTS_BASHPROF"
-  ssh -T $S_HOSTNAME "cat > '$S_FILE_BASHRC'" <<< "$S_CONTENTS_BASHRC"
-  ssh -T $S_HOSTNAME "cat > '$S_FILE_FISHCONFIG'" <<< "$S_CONTENTS_FISHCONFIG"
-  ssh -T $S_HOSTNAME "cat > '$S_FILE_ZSHRC'" <<< "$S_CONTENTS_ZSHRC"
-fi
-echodebug "Done copying configfiles"
 
 # check image
 
-echoinfo "Checking for VSCode Server image and app"
+echoinfo "Checking for RStudio Server image"
 
-if [[ $S_IMAGE =~ ^(rocky|default)$ ]]; then
-  echoinfo "Using default Rocky image"
-  S_IMAGE="/sc/arion/work/$S_USERNAME/vscode_rocky_latest.sif"
-  S_IMAGE_URL="library://befh/minerva_servers/vscode_rocky:latest"
-  S_DISTRO=rocky
-  echodebug "Using image $S_IMAGE"
-elif [[ $S_IMAGE == "ubuntu" ]]; then
-  echoinfo "Using Ubuntu image"
-  S_IMAGE="/sc/arion/work/$S_USERNAME/vscode_ubuntu_latest.sif"
-  S_IMAGE_URL="library://befh/minerva_servers/vscode_ubuntu:latest"
+if [[ $S_IMAGE == "default" ]]; then
+  echoinfo "Using default Ubuntu image"
+  S_IMAGE="/sc/arion/work/$S_USERNAME/rstudio_latest.sif"
+  S_IMAGE_URL="library://befh/minerva_servers/rstudio:latest"
   S_DISTRO=ubuntu
   echodebug "Using image $S_IMAGE"
 else
@@ -830,7 +607,6 @@ else
   S_DISTRO=custom
 fi
 
-VSC_URL="https://code.visualstudio.com/sha/download?build=stable&os=cli-alpine-x64"
 eval_heredoc <<EOF
 if [[ $S_UPDATE -eq 1 || ! -e $S_IMAGE ]]; then
   if [[ $S_DISTRO == "custom" ]]; then
@@ -842,13 +618,6 @@ if [[ $S_UPDATE -eq 1 || ! -e $S_IMAGE ]]; then
     ml singularity/3.6.4
     singularity pull -F --name $S_IMAGE --arch amd64 $S_IMAGE_URL
   fi
-fi
-if [[ $S_UPDATE -eq 1 || ! -e $SVSC_APP ]]; then
-  echo $(echoinfo "Downloading the latest VSCode app version")
-  wget -O vscode.tar.gz "$VSC_URL"
-  tar xf vscode.tar.gz
-  mv code $SVSC_APP
-  rm vscode.tar.gz
 fi
 EOF
 
@@ -877,10 +646,11 @@ instructs_mrun() {
   echoinfo "$S_FWDCMD"
   echoinfo "Run that command in a terminal to establish the SSH tunnel."
   echoinfo "Replace LOCAL_PORT in the following url with the chosen port:"
-  echoinfo "http://localhost:LOCAL_PORT?tkn=$S_REMOTE_TOKEN"
+  echoinfo "http://localhost:LOCAL_PORT"
   echoinfo "Open the url in your browser and use the password to log in."
+  echoinfo "The password is $S_PASSWORD"
   echoinfo "Or run the following command:"
-  echoinfo "vscode_minerva --remote-start $S_REMOTE_IP:$S_REMOTE_PORT:$S_REMOTE_TOKEN"
+  echoinfo "rstudio_minerva --remote-start $S_REMOTE_IP:$S_REMOTE_PORT:$S_PASSWORD"
 }
 
 echoinfo "Checking if reconnection is possible\n"
@@ -908,9 +678,7 @@ if [ -f $S_RCI ]; then
 
     if [[ "$S_HOSTNAME" == "minervarun" ]]; then
       S_FWDCMD=$(sed -nE 's/^SSH tunnel +: (.+)/\1/p' $S_RCI)
-      S_REMOTE_TOKEN=$(sed -nE 's/^Remote token[a-zA-Z ]+: (.+)/\1/p' $S_RCI)
-      S_REMOTE_IP=$(sed -nE 's/^Remote IP address +: (.+)/\1/p' $S_RCI)
-      S_REMOTE_PORT=$(sed -nE 's/^Remote port +: (.+)/\1/p' $S_RCI)
+      S_PASSWORD=$(sed -nE 's/^Password +: (.+)/\1/p' $S_RCI)
       instructs_mrun
       exit 0
     fi
@@ -1118,7 +886,7 @@ elif ! echo "$S_BALANCE" | grep -q "$S_ACCT"; then
 fi
 
 ###############################################################################
-# Start VSCode on the cluster                                                 #
+# Start rstudio server on the cluster                                         #
 ###############################################################################
 
 echoinfo "Computing conda environment"
@@ -1162,10 +930,71 @@ fi
 
 echoinfo "Using environment $S_CONDAENV at $S_PREFIX"
 
-VSC_LOG_LEVEL="info"
+R_LOG_LEVEL="info"
 if [[ $S_DEBUG -eq 1 ]]; then
-  echodebug "VSCode Log level set to debug"
-  VSC_LOG_LEVEL="debug"
+  echodebug "R Log level set to debug"
+  R_LOG_LEVEL="debug"
+fi
+
+S_CONTENTS_LOGCONF=$(cat <<EOF
+[*]
+log-level=$R_LOG_LEVEL
+logger-type=file
+log-dir=/rstudio_logs
+
+[@rserver]
+max-size-mb=10
+rotate-days=2
+max-rotations=50
+delete-days=10
+warn-syslog=0
+EOF
+)
+
+echodebug "Logging configuration contents:"
+if [[ $S_DEBUG -eq 1 ]]; then
+  echo "$S_CONTENTS_LOGCONF"
+fi
+
+S_CONTENTS_BASHPROF=$(cat <<EOF
+minerva() {
+  ssh -o StrictHostKeyChecking=accept-new -t \$(hostname -f) \\
+    "conda activate $S_CONDAENV; ml proxies; cd \$PWD; \\\$SHELL"
+}
+alias ijob='conda deactivate; echo leaving sandbox; ssh -t li03c03 ijob'
+alias regjob='conda deactivate; echo leaving sandbox; ssh -t li03c03 regjob'
+PATH=\$(echo \$PATH |
+  awk -v RS=':' '!/conda/ { printf "%s%s", sep, \$0; sep = ":" }')
+LD_LIBRARY_PATH=\$(echo \$LD_LIBRARY_PATH |
+  awk -v RS=':' '!/conda/ { printf "%s%s", sep, \$0; sep = ":" }')
+EOF
+)
+if [[ $S_ISOLATED -lt 2 ]]; then
+  S_CONTENTS_BASHPROF+=$(cat <<EOF
+
+minerva
+EOF
+)
+fi
+
+S_CONTENTS_BASHPROF+=$(cat <<EOF
+
+. /opt/conda/etc/profile.d/conda.sh && \\
+. /opt/conda/etc/profile.d/mamba.sh && \\
+alias ll='ls -l' && \
+mamba activate $S_CONDAENV
+export http_proxy=http://172.28.7.1:3128
+export https_proxy=http://172.28.7.1:3128
+export ftp_proxy=http://172.28.7.1:3128
+export rsync_proxy=http://172.28.7.1:3128
+export all_proxy=http://172.28.7.1:3128
+export no_proxy=localhost,*.chimera.hpc.mssm.edu,172.28.0.0/16
+EOF
+)
+
+echodebug "Bash profile contents:"
+if [[ $S_DEBUG -eq 1 ]]; then
+  echo "$S_CONTENTS_BASHPROF"
 fi
 
 echoinfo "Building LSF jobscript"
@@ -1173,15 +1002,15 @@ echoinfo "Building LSF jobscript"
 #ssh $S_HOSTNAME "cat > $S_FILE_JOB" <<<cat <<EOF
 S_CONTENTS_JOB=$(cat <<EOF
 #!/usr/bin/env bash
-#BSUB -J vscode$S_SESSION
+#BSUB -J rstudio$S_SESSION
 #BSUB -P $S_ACCT
 #BSUB -q $S_QUEUE
 #BSUB -n $S_NUM_CPU
 #BSUB -R span[hosts=1]
 #BSUB -W $S_RUN_TIME
 #BSUB -R rusage[mem=$S_MEM_PER_CPU_CORE]
-#BSUB -oo $S_WORKDIR/vscode$S_SESSION_%J.out
-#BSUB -eo $S_WORKDIR/vscode$S_SESSION_%J.err
+#BSUB -oo $S_WORKDIR/rstudio$S_SESSION_%J.out
+#BSUB -eo $S_WORKDIR/rstudio$S_SESSION_%J.err
 #BSUB -L /bin/bash
 EOF
 )
@@ -1209,7 +1038,6 @@ export no_proxy=localhost,*.chimera.hpc.mssm.edu,172.28.0.0/16
 
 SINGULARITY_SHELL=/bin/bash
 
-#export XDG_RUNTIME_DIR="\$HOME/vsc_runtime"
 S_IP_REMOTE="\$(hostname -i)"
 echo "Remote IP:\$S_IP_REMOTE" >> $S_FILE_IP
 
@@ -1243,44 +1071,39 @@ done
 
 echo "Remote Port:\$S_PORT_REMOTE" >> $S_FILE_IP
 
-## Start VSCode ##
+## Start RStudio ##
 
 # Set-up temporary paths
-if [[ -d $S_TMP ]]; then
-  rm -rf $S_TMP/*
-fi
-mkdir -p $S_TMP/{home,tmp}
+mkdir -p $S_TMP/{run,var-lib-rstudio-server,home,tmp}
 
-cat > $S_TMP/home/.launch_radian.sh <<EOFF
-#!/usr/bin/env bash
-if which radian > /dev/null; then
-  LC_ALL=C.UTF-8 radian \\\$@
-else
-  LC_ALL=C.UTF-8 R \\\$@
+export RSTUDIO_R_BIN=$S_PREFIX/bin/R
+export RSTUDIO_PY_BIN=$S_PREFIX/bin/python
+
+if [ -z "$S_PREFIX" ]; then
+  echo "Activate a conda env or specify CONDA_PREFIX"
+  exit 1
 fi
 
-exit 0
-EOFF
-chmod +x $S_TMP/home/.launch_radian.sh
+source $S_FILE_PASSWORD
 
-cat > $S_TMP/home/.launch_r.sh <<EOFF
-#!/usr/bin/env bash
-LC_ALL=C.UTF-8 R \\\$@
-EOFF
-chmod +x $S_TMP/home/.launch_r.sh
-
-log_vscode="$S_WORKDIR/vscode$S_SESSION_\$LSB_JOBID.vscode.log"
-
-echo "Starting VSCode server on port \$S_PORT_REMOTE ..."
+echo "Starting rstudio service on port \$S_PORT_REMOTE ..."
 singularity run \\
+  --bind $S_TMP/var-lib-rstudio-server:/var/lib/rstudio-server \\
   --bind /sys/fs/cgroup/:/sys/fs/cgroup/:ro \\
-  --bind $SVSC_APP:/usr/local/bin/code \\
+  --bind $S_WORKDIR/database.conf:/etc/rstudio/database.conf \\
+  --bind $S_WORKDIR/rsession.conf:/etc/rstudio/rsession.conf \\
+  --bind $S_WORKDIR/rserver.conf:/etc/rstudio/rserver.conf \\
   --bind ${S_PREFIX}:${S_PREFIX} \\
-  --bind $S_TMP/tmp:/tmp \\
+  --bind $S_FILE_LOGCONF:/etc/rstudio/logging.conf \\
+  --bind $S_TMP/run:/serverdir \\
+  --bind $S_DIR_LOGCONF:/rstudio_logs \\
+  --bind $S_TMP/tmp:/tmp/rstudio-server \\
   --bind /opt/hpc:/opt/hpc:ro \\
-  --app code \\
-  --env S_CONDAENV=$S_CONDAENV \\
+  --app rserver \\
+  --env PASSWORD=\$PASSWORD \\
+  --env RS_CONDAENV=$S_CONDAENV \\
   --env USER=$S_USERNAME \\
+  --cleanenv \\
 EOF
 )
 
@@ -1304,48 +1127,30 @@ S_CONTENTS_JOB+=$(echo "$S_CONTENTS_JOB_CONDA" | sed '/./ s|$|\\|')
 if [[ $S_ISOLATED -gt 0 ]]; then
   S_CONTENTS_JOB+="$(cat <<EOF
 
-  --cleanenv \\
   --no-home \\
   --home $S_TMP/home:/myhome \\
   --bind $S_TMP/home:/myhome \\
-  --bind $SVSC_DIR_CONFIG_DOTVSC:/myhome/.vscode-server \\
+  --bind $S_DIR_CONFIG:/myhome/.config/rstudio \\
   --bind $S_FILE_BASHPROF:/myhome/.bash_profile \\
-  --bind $S_FILE_BASHRC:/myhome/.bashrc \\
-  --bind $S_FILE_FISHCONFIG:/myhome/.config/fish/config.fish \\
-  --bind $S_FILE_ZSHRC:/myhome/.zshrc \\
   --bind \$HOME/.ssh:/myhome/.ssh \\
-  --bind $S_WORKDIR/.setup_vscode.sh:/myhome/.setup_vscode.sh \\
-  --bind $S_WORKDIR/.recommended_packages.txt:/myhome/.recommended_packages.txt \\
-  --bind $S_WORKDIR/.config_template.json:/myhome/.config_template.json \\
-  --bind \$HOME/.gitconfig:/myhome/.gitconfig \\
 EOF
 )"
 else
   S_CONTENTS_JOB+="$(cat <<EOF
 
   --bind $S_FILE_BASHPROF:/hpc/users/$S_USERNAME/.bash_profile \\
-  --bind $S_FILE_BASHRC:/hpc/users/$S_USERNAME/.bashrc \\
-  --bind $S_FILE_FISHCONFIG:/hpc/users/$S_USERNAME/.config/fish/config.fish \\
-  --bind $S_FILE_ZSHRC:/hpc/users/$S_USERNAME/.zshrc \\
-  --bind $SVSC_DIR_CONFIG_DOTVSC:/hpc/users/$S_USERNAME/.vscode-server \\
-  --bind $S_WORKDIR/.setup_vscode.sh:/hpc/users/$S_USERNAME/.setup_vscode.sh \\
-  --bind $S_WORKDIR/.recommended_packages.txt:/hpc/users/$S_USERNAME/.recommended_packages.txt \\
-  --bind $S_WORKDIR/.config_template.json:/hpc/users/$S_USERNAME/.config_template.json \\
-  --bind $S_TMP/home/.launch_r.sh:/hpc/users/$S_USERNAME/.launch_r.sh \\
-  --bind $S_TMP/home/.launch_radian.sh:/hpc/users/$S_USERNAME/.launch_radian.sh \\
-  --bind /hpc/lsf:/hpc/lsf \\
-  --bind /hpc/packages:/hpc/packages \\
 EOF
 )"
 fi
 
 S_CONTENTS_JOB+="$(cat <<EOF
 
-  $S_IMAGE serve-web --host \${S_IP_REMOTE} --port \$S_PORT_REMOTE \\
-  --user-data-dir ~/.config/Code/User --accept-server-license-terms \\
-  --log $VSC_LOG_LEVEL > \$log_vscode &
-
-echo VSCode started...
+  $S_IMAGE --auth-none 0 --auth-pam-helper-path=pam-helper \\
+  --www-port \$S_PORT_REMOTE --server-data-dir=/serverdir \\
+  --rsession-which-r=\$RSTUDIO_R_BIN \\
+  --rsession-ld-library-path=$S_PREFIX/lib \\
+  --secure-cookie-key-file /serverdir/secure-cookie-key \\
+  --server-user $S_USERNAME &
 
 ## Done ##
 
@@ -1355,7 +1160,6 @@ sing_stat=\$?
 if [[ "$S_DEBUG" -eq 1 ]]; then
   /usr/bin/env > $S_WORKDIR/jobenv$S_SESSION.txt
 fi
-echo Writing log to \$log_vscode
 
 for i in {3..1}; do
   echo "Checking \$i, next check in 5 seconds."
@@ -1374,13 +1178,6 @@ if [[ \$sing_stat -ne "0" ]]; then
   exit 1
 else
   echo "Status:GOOD" >> $S_FILE_IP
-  if [[ $S_ISOLATED -gt 0 ]]; then
-    token=\$(cat $S_TMP/home/.vscode/cli/serve-web-token)
-  else
-    token=\$(cat /hpc/users/\$USER/.vscode/cli/serve-web-token)
-  fi
-  echo "Token:\$token" >> $S_FILE_IP
-  echo Server Token: \$token
 fi
 
 cleanup () {
@@ -1408,14 +1205,18 @@ fi
 
 if [[ $S_HOSTNAME == "minervarun" ]]; then
   # Store the docstring in $S_FILE_LOGCONF locally
-  echodebug "Locally copying job file on minerva"
+  echodebug "Locally copying logconf, bashprof, and job files on minerva"
+  echo "$S_CONTENTS_LOGCONF" > "$S_FILE_LOGCONF"
+  echo "$S_CONTENTS_BASHPROF" > "$S_FILE_BASHPROF"
   echo "$S_CONTENTS_JOB" > "$S_FILE_JOB"
 else
   # Copy the docstring to $S_FILE_LOGCONF remotely
-  echodebug "Copying job file to $S_HOSTNAME"
+  echodebug "Copying logconf, bashprof, and job files to $S_HOSTNAME"
+  ssh -T $S_HOSTNAME "cat > '$S_FILE_LOGCONF'" <<< "$S_CONTENTS_LOGCONF"
+  ssh -T $S_HOSTNAME "cat > '$S_FILE_BASHPROF'" <<< "$S_CONTENTS_BASHPROF"
   ssh -T $S_HOSTNAME "cat > '$S_FILE_JOB'" <<< "$S_CONTENTS_JOB"
 fi
-echodebug "Done copying job file"
+echodebug "Done copying logconf, bashprof, and job files"
 
 TRY=1
 SUCCESS=0
@@ -1491,7 +1292,6 @@ ENDSSH
     echoinfo "Receiving ip and port from the server"
     S_REMOTE_IP=$(echo "$S_CONTENTS_IP" | grep -m1 'Remote IP' | cut -d ':' -f 2)
     S_REMOTE_PORT=$(echo "$S_CONTENTS_IP" | grep -m1 'Remote Port' | cut -d ':' -f 2)
-    S_REMOTE_TOKEN=$(echo "$S_CONTENTS_IP" | grep -m1 'Token' | cut -d ':' -f 2)
     SUCCESS=1
   elif [[ $S_REMOTE_STATUS == "BUSY" ]]; then
     hostname=$(echo "$S_CONTENTS_IP" | grep -m1 'HOSTNAME' | cut -d ':' -f 2)
@@ -1531,9 +1331,9 @@ fi
 if [[ $S_HOSTNAME == "minervarun" ]]; then
   S_LOCAL_PORT=LOCAL_PORT
 elif ! [ -z ${S_SESSION+x} ]; then
-  S_LOCAL_PORT=$(find_port 8890)
+  S_LOCAL_PORT=$(find_port 8990)
 else
-  S_LOCAL_PORT=$(find_port 8899)
+  S_LOCAL_PORT=$(find_port 8999)
 fi
 
 S_FWDCMD="ssh $S_HOSTNAME -L $S_LOCAL_PORT:$S_REMOTE_IP:$S_REMOTE_PORT -fNT"
@@ -1546,8 +1346,13 @@ if ! [[ $S_HOSTNAME == "minervarun" ]]; then
   # SSH tunnel is started in the background, pause 3 seconds to make sure
   # it is established before starting the browser
   sleep 3
+  
+  S_PASSWORD=$(ssh $S_HOSTNAME "cat $S_FILE_PASSWORD" | 
+               awk -F "=" '$1 == "export PASSWORD" {print $2}')
 else
   S_FWDCMD=$(echo $S_FWDCMD | sed "s/minervarun/minerva/")
+  S_PASSWORD=$(cat $S_FILE_PASSWORD |
+               awk -F "=" '$1 == "export PASSWORD" {print $2}')
 fi
 
 # print information about IP, ports and token
@@ -1557,8 +1362,8 @@ echo -e "Remote IP address  : $S_REMOTE_IP"
 echo -e "Remote port        : $S_REMOTE_PORT"
 echo -e "Local port         : $S_LOCAL_PORT"
 echo -e "SSH tunnel command : $S_FWDCMD"
-echo -e "URL                : http://localhost:$S_LOCAL_PORT?tkn=$S_REMOTE_TOKEN"
-echo -e "Remote token       : $S_REMOTE_TOKEN"
+echo -e "URL                : http://localhost:$S_LOCAL_PORT"
+echo -e "Password           : $S_PASSWORD"
 echo
 
 # write reconnect_info file
@@ -1568,9 +1373,9 @@ Remote IP address : $S_REMOTE_IP
 Remote port       : $S_REMOTE_PORT
 Local port        : $S_LOCAL_PORT
 SSH tunnel        : $S_FWDCMD
-URL               : http://localhost:$S_LOCAL_PORT?tkn=$S_REMOTE_TOKEN
+URL               : http://localhost:$S_LOCAL_PORT
 BJOB ID           : $S_BJOB_ID
-Remote token      : $S_REMOTE_TOKEN
+Password          : $S_PASSWORD
 EOF
 
 # Copy connection information to the remote machine
@@ -1584,7 +1389,8 @@ if [[ $S_HOSTNAME == "minervarun" ]]; then
   instructs_mrun
 elif [[ $S_OPEN_BROWSER -eq 0 ]]; then
   echoinfo "Please open the following URL in your browser:"
-  echoinfo "http://localhost:$S_LOCAL_PORT?tkn=$S_REMOTE_TOKEN"
+  echoinfo "http://localhost:$S_LOCAL_PORT"
+  echoinfo "The password is $S_PASSWORD"
 else
   # save url in variable
   S_URL=http://localhost:$S_LOCAL_PORT
