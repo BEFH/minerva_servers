@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/env zsh
 
 ###############################################################################
 #                                                                             #
@@ -11,9 +11,10 @@
 #                  : Andreas Lugmayr, Mike Boss                               #
 #  Date            : October 2021                                             #
 #  Location        : Mount Sinai (originally ETH Zurich)                      #
-#  Version         : 0.8.5                                                    #
+#  Version         : 0.8.7                                                    #
 #  Change history  :                                                          #
 #                                                                             #
+#  16.04.2024    Script works in zsh and bash. Zsh is now default             #
 #  16.04.2024    Back up config files when updating; more flexible confs;     #
 #                give instructions for first run                              #
 #  15.04.2024    Move singularity image paths                                 #
@@ -65,7 +66,7 @@
 ###############################################################################
 
 # Version
-S_VERSION="0.8.5"
+S_VERSION="0.8.7"
 
 # Script directory
 S_SCRIPTDIR=$HOME
@@ -73,9 +74,9 @@ S_SCRIPTDIR=$HOME
 # hostname of the cluster to connect to
 if [ -d /etc/lsb-release.d ]; then
   S_HOSTNAME="minervarun"
-elif grep -q 'Host minerva[[:space:]]*$' $HOME/.ssh/config &> /dev/null; then
+elif grep -q 'Host minerva[[:space:]]*$' $HOME/.ssh/config > /dev/null 2>&1; then
   S_HOSTNAME="minerva"
-elif grep -q 'Host chimera[[:space:]]*$' $HOME/.ssh/config &> /dev/null; then
+elif grep -q 'Host chimera[[:space:]]*$' $HOME/.ssh/config > /dev/null 2>&1; then
   S_HOSTNAME="chimera"
 fi
 
@@ -244,7 +245,8 @@ exit 1
 ###############################################################################
 
 # Check that the BASH version is at least 5.0 and exit if not
-if [[ ${BASH_VERSION%%.*} -lt 5 ]]; then
+runshell=$(ps -o args= -p $$ | grep -Em 1 -o '\w{0,5}sh')
+if [[ ${BASH_VERSION%%.*} -lt 5 ]] && [[ $runshell != zsh ]]; then
   echoerror "This script requires BASH version 5.0 or higher"
   exit 1
 fi
@@ -356,7 +358,7 @@ done
 find_port() {
   echoinfo "Determining free port on local computer" 1>&2
   PRT=$1
-  while ( lsof -i :$PRT -P -n | grep LISTEN &> /dev/null); do
+  while ( lsof -i :$PRT -P -n | grep LISTEN > /dev/null 2>&1); do
     PRT=$((PRT+1))
   done
   echo $PRT
@@ -448,8 +450,8 @@ else
 fi
 
 # Check if multiplexing is enabled, otherwise warn and compensate
-cm_enabled=$(([ -f $HOME/.ssh/config ] &&
-              grep -q "ControlPath" $HOME/.ssh/config &> /dev/null) &&
+cm_enabled=$({[ -f $HOME/.ssh/config ] &&
+              grep -q "ControlPath" $HOME/.ssh/config > /dev/null 2>&1} &&
              echo 1 || echo 0)
 if ! [[ "$S_HOSTNAME" == "minervarun" || cm_enabled -eq 1 ]]; then
   echoalert "You should enable ControlMaster in your .ssh/config.\n"
@@ -493,12 +495,11 @@ S_FILE_BASHPROF="$S_WORKDIR/bash_profile"
 S_FILE_BASHRC="$S_WORKDIR/bashrc"
 S_FILE_FISHCONFIG="$S_WORKDIR/config.fish"
 S_FILE_ZSHRC="$S_WORKDIR/zshrc"
-declare -A S_FILES_SHELLCONF=(
-  ["bash_profile"]="$S_FILE_BASHPROF"
-  ["bashrc"]="$S_FILE_BASHRC"
-  ["config.fish"]="$S_FILE_FISHCONFIG"
-  ["zshrc"]="$S_FILE_ZSHRC"
-)
+declare -A S_FILES_SHELLCONF
+S_FILES_SHELLCONF["bash_profile"]="$S_FILE_BASHPROF"
+S_FILES_SHELLCONF["bashrc"]="$S_FILE_BASHRC"
+S_FILES_SHELLCONF["config.fish"]="$S_FILE_FISHCONFIG"
+S_FILES_SHELLCONF["zshrc"]="$S_FILE_ZSHRC"
 SVSC_DIR_CONFIG="/hpc/users/$S_USERNAME/.config/CodeContainer"
 SVSC_DIR_CONFIG_DOTVSC="$S_WORKDIR/serverconf"
 SVSC_APP="$S_WORKDIR/code"
@@ -604,8 +605,8 @@ echodebug "Checking shell config files"
 
 S_BSUBCMD=/hpc/lsf/10.1/linux3.10-glibc2.17-x86_64/bin/bsub
 
-declare -A S_CONFIG_CONTENTS=(
-  ["bash_profile"]=$(cat <<EOF
+declare -A S_CONFIG_CONTENTS
+S_CONFIG_CONTENTS["bash_profile"]=$(cat <<EOF
 # Set prompt to standard bash prompt instead of the one from the image
 export PS1='\u@\h:\w\$ '
 source \$HOME/.bashrc
@@ -628,7 +629,7 @@ alias regjob='ssh -t li03c04 regjob'
 alias ll='ls -l'
 EOF
 )
-  ["bashrc"]=$(cat <<EOF
+S_CONFIG_CONTENTS["bashrc"]=$(cat <<EOF
 bsub() {
     bsubcmd=$S_BSUBCMD
     if module is-loaded lsf && module is-loaded CPAN &> /dev/null; then
@@ -664,7 +665,7 @@ alias lsf_enable="ml lsf CPAN"
 alias lsf_disable="ml -lsf -CPAN"
 EOF
 )
-  ["config.fish"]=$(cat <<EOF
+S_CONFIG_CONTENTS["config.fish"]=$(cat <<EOF
 if status is-interactive
     # Commands to run in interactive sessions can go here
 end
@@ -718,10 +719,10 @@ alias lsf_disable="ml -lsf -CPAN"
 conda activate \$S_CONDAENV
 EOF
 )
-  ["zshrc"]=$(cat <<EOF
+S_CONFIG_CONTENTS["zshrc"]=$(cat <<EOF
 bsub() {
     bsubcmd=$S_BSUBCMD
-    if module is-loaded lsf && module is-loaded CPAN &> /dev/null; then
+    if module is-loaded lsf && module is-loaded CPAN > /dev/null 2>&1; then
         \$bsubcmd \$@ 2> >(grep -v "Perl_xs_version_bootcheck" >&2)
     else
         echo "Please enable LSF by running 'lsf_enable'"
@@ -774,7 +775,6 @@ alias lsf_disable="ml -lsf -CPAN"
 
 conda activate \$S_CONDAENV
 EOF
-)
 )
 
 if [[ $S_UPDATE -eq 1 ]]; then
@@ -886,7 +886,7 @@ instructs_mrun() {
 echoinfo "Checking if reconnection is possible\n"
 
 if [ -z ${S_MANUAL_MULTIPLEX+x} ] && ! [[ "$S_HOSTNAME" == "minervarun" ]]; then
-  scp $S_HOSTNAME:$S_FILE_RECONNECT $S_SCRIPTDIR/ &> /dev/null
+  scp $S_HOSTNAME:$S_FILE_RECONNECT $S_SCRIPTDIR/ > /dev/null 2>&1
   echodebug "Downloaded reconnect_info file from $S_HOSTNAME:$S_FILE_RECONNECT"
 fi
 
@@ -922,9 +922,9 @@ if [ -f $S_RCI ]; then
     RC_SSH="ssh $S_HOSTNAME -L $RC_PRT:$RC_IP_REMOTE:$RC_PRT_REMOTE -fNT"
 
     # reconnect if linux-gnu, darwin, or msys (regex check)
-    if [[ "$OSTYPE" =~ ^linux-gnu|darwin|msys ]]; then
+    if [[ "$OSTYPE" =~ ^(linux-gnu|darwin|msys) ]]; then
       echoinfo "Connecting to the server"
-      lsof -i :$RC_PRT > /dev/null || $RC_SSH
+      lsof -i :$RC_PRT > /dev/null || eval "$RC_SSH"
     else
       S_OPEN_BROWSER=0
       echowarn "Your OS does not allow starting browsers automatically."
@@ -1026,7 +1026,7 @@ fi
 if [[ "$S_RUN_TIME" =~ ^([0-9]{1,3}):([0-9]{2})$ ]]; then
   S_HOURS=${BASH_REMATCH[1]}
   S_MIN=$(echo ${BASH_REMATCH[2]} | sed 's/^0\(.\)$/\1/')
-  S_MIN_TOT=$(($S_MIN + 60 * $S_HOURS))
+  S_MIN_TOT=$((S_MIN + 60 * S_HOURS))
   if [[ $S_MIN_TOT -gt 20160 ]]; then
     echoerror "$S_RUN_TIME -> Runtime limit is too long. Please try again\n"
     display_help
@@ -1067,7 +1067,7 @@ if ! [[ "$S_MEM_PER_CPU_CORE" =~ ^[0-9]+$ ]]; then
   display_help
 else
   echoinfo "Memory per core set to $S_MEM_PER_CPU_CORE MB"
-  S_MEM_TOTAL=$(($S_MEM_PER_CPU_CORE * $S_NUM_CPU))
+  S_MEM_TOTAL=$((S_MEM_PER_CPU_CORE * S_NUM_CPU))
   echoinfo "Total memory set to $S_MEM_TOTAL MB"
   if [[ $S_MEM_TOTAL -gt 190000 ]]; then
     if [[ $S_RESOURCE == "null" ]]; then
@@ -1518,7 +1518,7 @@ ENDSSH
     echoerror "Server died with the exit code $S_REMOTE_EXIT"
     exit $S_REMOTE_EXIT
   fi
-  TRY=$(($TRY+1))
+  let TRY+=1
 done
 
 # check if the IP, the port and the token are defined
@@ -1541,7 +1541,7 @@ S_FWDCMD="ssh $S_HOSTNAME -L $S_LOCAL_PORT:$S_REMOTE_IP:$S_REMOTE_PORT -fNT"
 if ! [[ $S_HOSTNAME == "minervarun" ]]; then
   # setup SSH tunnel from local computer to compute node via login node
   echoinfo "Setting up SSH tunnel for connecting the browser to the server"
-  $S_FWDCMD
+  eval "$S_FWDCMD"
   
   # SSH tunnel is started in the background, pause 3 seconds to make sure
   # it is established before starting the browser
@@ -1578,7 +1578,7 @@ EOF
 if [[ $S_HOSTNAME == "minervarun" ]]; then
   cp $S_RCI $S_FILE_RECONNECT
 elif [ -z ${S_MANUAL_MULTIPLEX+x} ]; then
-  scp $S_RCI $S_HOSTNAME:$S_FILE_RECONNECT &> /dev/null
+  scp $S_RCI $S_HOSTNAME:$S_FILE_RECONNECT > /dev/null 2>&1
 fi
 
 eval_heredoc <<EOF
