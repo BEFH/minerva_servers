@@ -16,6 +16,52 @@ Both scripts have the following features:
 * Use Anaconda/Mamba to manage packages
 * Run on the Minerva cluster in jobs
 
+## Considerations
+
+### Isolation
+
+Both scripts run with some degree of isolation. This means by default, there are
+some differences between the evironments within the servers and on the regular
+Minerva command line.
+
+#### VSCode
+
+VSCode runs with minimal isolation by default. This means that you have access
+to your standard home directory, but your shell configurations are overridden
+so that the terminals will work within Singularity. You can edit the shell
+configurations, but they will be overwritten if you use `--update`.
+
+After setup, you will be able to run *most* things directly from the default
+shell, but they will be running within the Singularity/Apptainer sandbox.
+
+* Commands within your Anaconda environment will almost certainly work well.
+* Most LSF commands will work after running `lsf_enable`.
+* You can load modules with `ml module`, but not all modules will work.
+
+If you have any issues, click on the "+" in the terminal tab and select
+"bash_minerva", "zsh_minerva" or "fish_minerva" to break out of the sandbox.
+
+You can also directly use the `ijob` and `regjob` scripts to start cluster jobs.
+
+#### RStudio
+
+RStudio runs with fairly stringent isolation to prevent issues with config
+scripts and libraries. This means that you will not have access to your home
+directory within R or RStudio. Environment variables will also not be passed
+into the session.
+
+Make sure you do not save files in the `/myhome` directory because they will not
+be preserved.
+
+In the terminal only, when you create a terminal, it will break out of the
+sandbox by default into the standard Minerva environment.
+
+### Runtime resources
+
+When running the scripts, you will start the servers in Minerva jobs. That means
+that the servers will be closed by LSF if you exceed the requested resources.
+Always keep that in mind when starting the scripts.
+
 ## Installation
 
 These scripts will be integrated into the lab setup script.
@@ -25,10 +71,10 @@ For now, do the following:
 mkdir -p ~/local/src ~/local/scripts
 git clone git@github.com:BEFH/minerva_servers.git ~/local/src/minerva_servers
 cd ~/local/scripts
-rm vscode_minerva rstudio_minerva
+rm vscode_minerva rstudio_minerva 2> /dev/null
 ln -s ../src/minerva_servers/vscode_minerva
 ln -s ../src/minerva_servers/rstudio_minerva
-cd
+cd - 
 ```
 
 Make sure `~/local/scripts` is in your `PATH` variable.
@@ -43,7 +89,7 @@ See https://en.wikibooks.org/wiki/OpenSSH/Cookbook/Multiplexing
 
 In order to ease the process of installing extensions and changing VSCode
 settings, I have provided a script that installs extensions and provides good
-starting settings. When in VSCode, press `⌥ + SHIFT + ~` to open a terminal,
+starting settings. When in VSCode, press `CTRL + SHIFT + ~` to open a terminal,
 then run `~/.setup_vscode.sh`. The script will provide further instructions.
 
 ### Updates

@@ -14,6 +14,8 @@
 #  Version         : 0.8.5                                                    #
 #  Change history  :                                                          #
 #                                                                             #
+#  16.04.2024    Back up config files when updating; more flexible confs;     #
+#                give instructions for first run                              #
 #  15.04.2024    Move singularity image paths                                 #
 #  05.04.2024    Automated local port selection for remote start,             #
 #                editable config files, improved messages, and fixes to       #
@@ -446,8 +448,8 @@ else
 fi
 
 # Check if multiplexing is enabled, otherwise warn and compensate
-cm_enabled=$(! [ -f $HOME/.ssh/config ] ||
-             ! grep -q "ControlPath" $HOME/.ssh/config &> /dev/null ||
+cm_enabled=$(([ -f $HOME/.ssh/config ] &&
+              grep -q "ControlPath" $HOME/.ssh/config &> /dev/null) &&
              echo 1 || echo 0)
 if ! [[ "$S_HOSTNAME" == "minervarun" || cm_enabled -eq 1 ]]; then
   echoalert "You should enable ControlMaster in your .ssh/config.\n"
@@ -469,13 +471,13 @@ if [[ "$S_HOSTNAME" == "minervarun" ]]; then
   S_USERNAME=$USER
   # make a function to run heredoc locally
   eval_heredoc() {
-    eval "$@"
+    bash -s
   }
 else
   echoinfo "Connecting to $S_HOSTNAME"
   S_USERNAME=$(ssh -n $S_HOSTNAME 'echo "$USER"')
   eval_heredoc() {
-    ssh $S_HOSTNAME 'bash -s' "$@"
+    ssh $S_HOSTNAME 'bash -s'
   }
 fi
 
@@ -491,6 +493,12 @@ S_FILE_BASHPROF="$S_WORKDIR/bash_profile"
 S_FILE_BASHRC="$S_WORKDIR/bashrc"
 S_FILE_FISHCONFIG="$S_WORKDIR/config.fish"
 S_FILE_ZSHRC="$S_WORKDIR/zshrc"
+declare -A S_FILES_SHELLCONF=(
+  ["bash_profile"]="$S_FILE_BASHPROF"
+  ["bashrc"]="$S_FILE_BASHRC"
+  ["config.fish"]="$S_FILE_FISHCONFIG"
+  ["zshrc"]="$S_FILE_ZSHRC"
+)
 SVSC_DIR_CONFIG="/hpc/users/$S_USERNAME/.config/CodeContainer"
 SVSC_DIR_CONFIG_DOTVSC="$S_WORKDIR/serverconf"
 SVSC_APP="$S_WORKDIR/code"
@@ -592,7 +600,12 @@ EOFF
 fi
 EOF
 
-S_CONTENTS_BASHPROF=$(cat <<EOF
+echodebug "Checking shell config files"
+
+S_BSUBCMD=/hpc/lsf/10.1/linux3.10-glibc2.17-x86_64/bin/bsub
+
+declare -A S_CONFIG_CONTENTS=(
+  ["bash_profile"]=$(cat <<EOF
 # Set prompt to standard bash prompt instead of the one from the image
 export PS1='\u@\h:\w\$ '
 source \$HOME/.bashrc
@@ -615,15 +628,7 @@ alias regjob='ssh -t li03c04 regjob'
 alias ll='ls -l'
 EOF
 )
-
-# if ! [[ -d ~/.vscode-server/extensions/ ]] || [[ \$(ls -1 ~/.vscode-server/extensions/ | wc -l) -lt 4 ]]; then
-#   echo To install recommended VSCode extensions and display instructions for
-#   echo configuring VSCode, please run ~/.setup_vscode.sh
-# fi
-
-S_BSUBCMD=/hpc/lsf/10.1/linux3.10-glibc2.17-x86_64/bin/bsub
-
-S_CONTENTS_BASHRC=$(cat <<EOF
+  ["bashrc"]=$(cat <<EOF
 bsub() {
     bsubcmd=$S_BSUBCMD
     if module is-loaded lsf && module is-loaded CPAN &> /dev/null; then
@@ -659,18 +664,7 @@ alias lsf_enable="ml lsf CPAN"
 alias lsf_disable="ml -lsf -CPAN"
 EOF
 )
-
-# if test -d ~/.vscode-server/extensions/
-#   set vsc_numext (ls -1 ~/.vscode-server/extensions/ | wc -l)
-# else
-#   set vsc_numext 0
-# end
-# if test \$vsc_numext -lt 4
-#   echo To install recommended VSCode extensions and display instructions for
-#   echo configuring VSCode, please run ~/.setup_vscode.sh
-# end
-
-S_CONTENTS_FISHCONFIG=$(cat <<EOF
+  ["config.fish"]=$(cat <<EOF
 if status is-interactive
     # Commands to run in interactive sessions can go here
 end
@@ -724,8 +718,7 @@ alias lsf_disable="ml -lsf -CPAN"
 conda activate \$S_CONDAENV
 EOF
 )
-
-S_CONTENTS_ZSHRC=$(cat <<EOF
+  ["zshrc"]=$(cat <<EOF
 bsub() {
     bsubcmd=$S_BSUBCMD
     if module is-loaded lsf && module is-loaded CPAN &> /dev/null; then
@@ -782,34 +775,41 @@ alias lsf_disable="ml -lsf -CPAN"
 conda activate \$S_CONDAENV
 EOF
 )
+)
 
-if [[ $S_HOSTNAME == "minervarun" ]] && \
-   ( [[ $S_UPDATE -eq 1 ]] || \
-     [ ! -f $S_FILE_BASHPROF ] || \
-     [ ! -f $S_FILE_BASHRC ] ||\
-     [ ! -f $S_FILE_FISHCONFIG ] || \
-     [ ! -f $S_FILE_ZSHRC ] ); then
-  # Store the docstring in $S_FILE_LOGCONF locally
-  echoinfo "Locally copying config files on minerva"
-  echo "$S_CONTENTS_BASHPROF" > "$S_FILE_BASHPROF"
-  echo "$S_CONTENTS_BASHRC" > "$S_FILE_BASHRC"
-  echo "$S_CONTENTS_FISHCONFIG" > "$S_FILE_FISHCONFIG"
-  echo "$S_CONTENTS_ZSHRC" > "$S_FILE_ZSHRC"
-elif [[ $S_UPDATE -eq 1 ]] || ssh $S_HOSTNAME \
-    "[ ! -f $S_FILE_BASHPROF ] || \
-     [ ! -f $S_FILE_BASHRC ] || \
-     [ ! -f $S_FILE_FISHCONFIG ] || \
-     [ ! -f $S_FILE_ZSHRC ]"; then
-  # Copy the docstring to $S_FILE_LOGCONF remotely
-  echoinfo "Copying config and files to $S_HOSTNAME"
-  ssh -T $S_HOSTNAME "cat > '$S_FILE_BASHPROF'" <<< "$S_CONTENTS_BASHPROF"
-  ssh -T $S_HOSTNAME "cat > '$S_FILE_BASHRC'" <<< "$S_CONTENTS_BASHRC"
-  ssh -T $S_HOSTNAME "cat > '$S_FILE_FISHCONFIG'" <<< "$S_CONTENTS_FISHCONFIG"
-  ssh -T $S_HOSTNAME "cat > '$S_FILE_ZSHRC'" <<< "$S_CONTENTS_ZSHRC"
+if [[ $S_UPDATE -eq 1 ]]; then
+  echoinfo "Updating config files"
+  eval_heredoc <<EOF
+  [ -f $S_FILE_BASHPROF ] && mv $S_FILE_BASHPROF $S_FILE_BASHPROF.bk
+  mv $S_FILE_BASHRC $S_FILE_BASHRC.bk
+  mv $S_FILE_FISHCONFIG $S_FILE_FISHCONFIG.bk
+  mv $S_FILE_ZSHRC $S_FILE_ZSHRC.bk
+EOF
 fi
-echodebug "Done copying configfiles"
 
-# check image
+S_ABSENT_FILES=$(echo $(eval_heredoc <<EOF
+[ -f $S_FILE_BASHPROF ] || printf "bash_profile "
+[ -f $S_FILE_BASHRC ] || printf "bashrc "
+[ -f $S_FILE_FISHCONFIG ] || printf "config.fish "
+[ -f $S_FILE_ZSHRC ] || printf zshrc
+printf "\n"
+EOF
+) | sed -e 's/^ //' -e 's/ $//')
+
+if [[ $S_ABSENT_FILES != "" ]]; then
+  echodebug "Copying configfiles"
+  for file in ${S_ABSENT_FILES[@]}; do
+    fname="${S_FILES_SHELLCONF[$file]}"
+    if [[ "$S_HOSTNAME" == "minervarun" ]]; then
+      echoinfo "Locally copying $file on minerva"
+      echo "${S_CONFIG_CONTENTS[$file]}" > $fname
+    else
+      echoinfo "Copying $file to $S_HOSTNAME"
+      ssh -T $S_HOSTNAME "cat > $fname" <<< "${S_CONFIG_CONTENTS[$file]}"
+    fi
+  done
+  echodebug "Done copying configfiles"
+fi
 
 echoinfo "Checking for VSCode Server image and app"
 
@@ -845,7 +845,7 @@ if [[ $S_UPDATE -eq 1 || ! -e $S_IMAGE ]]; then
 fi
 if [[ $S_UPDATE -eq 1 || ! -e $SVSC_APP ]]; then
   echo $(echoinfo "Downloading the latest VSCode app version")
-  wget -O vscode.tar.gz "$VSC_URL"
+  wget -q -O vscode.tar.gz "$VSC_URL"
   tar xf vscode.tar.gz
   mv code $SVSC_APP
   rm vscode.tar.gz
@@ -1553,6 +1553,7 @@ fi
 # print information about IP, ports and token
 echoinfo "Server info:"
 echo
+echo -e "LSF Job ID         : $S_BJOB_ID"
 echo -e "Remote IP address  : $S_REMOTE_IP"
 echo -e "Remote port        : $S_REMOTE_PORT"
 echo -e "Local port         : $S_LOCAL_PORT"
@@ -1579,6 +1580,24 @@ if [[ $S_HOSTNAME == "minervarun" ]]; then
 elif [ -z ${S_MANUAL_MULTIPLEX+x} ]; then
   scp $S_RCI $S_HOSTNAME:$S_FILE_RECONNECT &> /dev/null
 fi
+
+eval_heredoc <<EOF
+if [[ ! -e "$SVSC_DIR_CONFIG_DOTVSC/data/CachedProfilesData" ]]; then
+  printf "\033[32m"
+  cat <<EOFF
+[INFO] It looks like this is the first time you are running VSCode
+       Open a terminal in VSCode (CTRL+SHIFT+\\\`) and run the following command:
+         ~/.setup_vscode.sh
+EOFF
+printf "\033[0m"
+fi
+EOF
+
+eval <<EOF
+if [[ ! -e "$SVSC_DIR_CONFIG_DOTVSC/data/CachedProfilesData" ]]; then
+  echo foo
+fi
+EOF
 
 if [[ $S_HOSTNAME == "minervarun" ]]; then
   instructs_mrun
