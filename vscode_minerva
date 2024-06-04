@@ -360,7 +360,7 @@ done
 find_port() {
   echoinfo "Determining free port on local computer" 1>&2
   PRT=$1
-  while ( lsof -i :$PRT -P -n | grep LISTEN > /dev/null 2>&1); do
+  while ( lsof -Pni :$PRT 2> /dev/null | grep -q LISTEN); do
     PRT=$((PRT+1))
   done
   echo $PRT
@@ -926,7 +926,7 @@ if [ -f $S_RCI ]; then
     # reconnect if linux-gnu, darwin, or msys (regex check)
     if [[ "$OSTYPE" =~ ^(linux-gnu|darwin|msys) ]]; then
       echoinfo "Connecting to the server"
-      lsof -i :$RC_PRT > /dev/null || eval "$RC_SSH"
+      lsof -Pni :$RC_PRT &> /dev/null || eval "$RC_SSH"
     else
       S_OPEN_BROWSER=0
       echowarn "Your OS does not allow starting browsers automatically."
