@@ -11,9 +11,10 @@
 #                  : Andreas Lugmayr, Mike Boss                               #
 #  Date            : October 2021                                             #
 #  Location        : Mount Sinai (originally ETH Zurich)                      #
-#  Version         : 0.8.8                                                    #
+#  Version         : 0.8.9                                                    #
 #  Change history  :                                                          #
 #                                                                             #
+#  04.05.2024    Include .Rprofile allowing R integration from other envs     #
 #  04.05.2024    Do not print lsof warnings                                   #
 #  16.04.2024    Script works in zsh and bash. Zsh is now default             #
 #  16.04.2024    Back up config files when updating; more flexible confs;     #
@@ -498,11 +499,13 @@ S_FILE_BASHPROF="$S_WORKDIR/bash_profile"
 S_FILE_BASHRC="$S_WORKDIR/bashrc"
 S_FILE_FISHCONFIG="$S_WORKDIR/config.fish"
 S_FILE_ZSHRC="$S_WORKDIR/zshrc"
+S_FILE_RPROFILE="$S_WORKDIR/Rprofile"
 declare -A S_FILES_SHELLCONF
 S_FILES_SHELLCONF["bash_profile"]="$S_FILE_BASHPROF"
 S_FILES_SHELLCONF["bashrc"]="$S_FILE_BASHRC"
 S_FILES_SHELLCONF["config.fish"]="$S_FILE_FISHCONFIG"
 S_FILES_SHELLCONF["zshrc"]="$S_FILE_ZSHRC"
+S_FILES_SHELLCONF["Rprofile"]="$S_FILE_RPROFILE"
 SVSC_DIR_CONFIG="/hpc/users/$S_USERNAME/.config/CodeContainer"
 SVSC_DIR_CONFIG_DOTVSC="$S_WORKDIR/serverconf"
 SVSC_APP="$S_WORKDIR/code"
@@ -609,6 +612,19 @@ echodebug "Checking shell config files"
 S_BSUBCMD=/hpc/lsf/10.1/linux3.10-glibc2.17-x86_64/bin/bsub
 
 declare -A S_CONFIG_CONTENTS
+S_CONFIG_CONTENTS["Rprofile"]=$(cat <<EOF
+if (interactive() && Sys.getenv("RSTUDIO") == "") {
+  Sys.setenv(TERM_PROGRAM = "vscode")
+  source(file.path(Sys.getenv("HOME"), ".vscode-R", "init.R"))
+}
+
+## Default repo
+local({
+  r <- getOption("repos")
+  r["CRAN"] <- "https://cran.us.r-project.org"
+  options(repos = r)})
+EOF
+)
 S_CONFIG_CONTENTS["bash_profile"]=$(cat <<EOF
 # Set prompt to standard bash prompt instead of the one from the image
 export PS1='\u@\h:\w\$ '
@@ -1321,6 +1337,7 @@ if [[ $S_ISOLATED -gt 0 ]]; then
   --bind $S_FILE_BASHRC:/myhome/.bashrc \\
   --bind $S_FILE_FISHCONFIG:/myhome/.config/fish/config.fish \\
   --bind $S_FILE_ZSHRC:/myhome/.zshrc \\
+  --bind $S_FILE_RPROFILE:/myhome/.Rprofile \\
   --bind \$HOME/.ssh:/myhome/.ssh \\
   --bind $S_WORKDIR/.setup_vscode.sh:/myhome/.setup_vscode.sh \\
   --bind $S_WORKDIR/.recommended_packages.txt:/myhome/.recommended_packages.txt \\
@@ -1335,6 +1352,7 @@ else
   --bind $S_FILE_BASHRC:/hpc/users/$S_USERNAME/.bashrc \\
   --bind $S_FILE_FISHCONFIG:/hpc/users/$S_USERNAME/.config/fish/config.fish \\
   --bind $S_FILE_ZSHRC:/hpc/users/$S_USERNAME/.zshrc \\
+  --bind $S_FILE_RPROFILE:/hpc/users/$S_USERNAME/.Rprofile \\
   --bind $SVSC_DIR_CONFIG_DOTVSC:/hpc/users/$S_USERNAME/.vscode-server \\
   --bind $S_WORKDIR/.setup_vscode.sh:/hpc/users/$S_USERNAME/.setup_vscode.sh \\
   --bind $S_WORKDIR/.recommended_packages.txt:/hpc/users/$S_USERNAME/.recommended_packages.txt \\
