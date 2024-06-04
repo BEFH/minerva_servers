@@ -12,17 +12,20 @@ From: rockylinux/rockylinux:8
     dnf-plugins-core wget curl openssh-clients zsh gzip bzip2 xz git which \
     libnsl libxcrypt compat-openssl10 acl epel-release git diffutils iputils \
     zip unzip traceroute bind-utils net-tools procps-ng lsof
+
   ## Rocky 9 only ##
   # dnf config-manager --set-enabled crb
   # /bin/crb enable
   ## end Rocky 9 only ##
-  dnf install -y Lmod lua-devel
 
   ## Rocky 8 only ##
+  dnf config-manager --set-enabled PowerTools
   wget -O fish.rpm https://download.opensuse.org/repositories/shells:/fish:/release:/3/CentOS_8/x86_64/fish-3.7.1-3.1.x86_64.rpm
   dnf install -y fish.rpm
   rm -f fish.rpm
   ## end Rocky 8 only ##
+
+  dnf install -y Lmod lua-devel
 
   # Install exa
   mkdir inst_exa
