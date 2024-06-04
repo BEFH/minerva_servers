@@ -68,7 +68,7 @@
 ###############################################################################
 
 # Version
-S_VERSION="0.8.7"
+S_VERSION="0.8.9"
 
 # Script directory
 S_SCRIPTDIR=$HOME
@@ -501,11 +501,11 @@ S_FILE_FISHCONFIG="$S_WORKDIR/config.fish"
 S_FILE_ZSHRC="$S_WORKDIR/zshrc"
 S_FILE_RPROFILE="$S_WORKDIR/Rprofile"
 declare -A S_FILES_SHELLCONF
-S_FILES_SHELLCONF["bash_profile"]="$S_FILE_BASHPROF"
-S_FILES_SHELLCONF["bashrc"]="$S_FILE_BASHRC"
-S_FILES_SHELLCONF["config.fish"]="$S_FILE_FISHCONFIG"
-S_FILES_SHELLCONF["zshrc"]="$S_FILE_ZSHRC"
-S_FILES_SHELLCONF["Rprofile"]="$S_FILE_RPROFILE"
+S_FILES_SHELLCONF[bash_profile]="$S_FILE_BASHPROF"
+S_FILES_SHELLCONF[bashrc]="$S_FILE_BASHRC"
+S_FILES_SHELLCONF[fishconf]="$S_FILE_FISHCONFIG"
+S_FILES_SHELLCONF[zshrc]="$S_FILE_ZSHRC"
+S_FILES_SHELLCONF[rprofile]="$S_FILE_RPROFILE"
 SVSC_DIR_CONFIG="/hpc/users/$S_USERNAME/.config/CodeContainer"
 SVSC_DIR_CONFIG_DOTVSC="$S_WORKDIR/serverconf"
 SVSC_APP="$S_WORKDIR/code"
@@ -612,7 +612,7 @@ echodebug "Checking shell config files"
 S_BSUBCMD=/hpc/lsf/10.1/linux3.10-glibc2.17-x86_64/bin/bsub
 
 declare -A S_CONFIG_CONTENTS
-S_CONFIG_CONTENTS["Rprofile"]=$(cat <<EOF
+S_CONFIG_CONTENTS[rprofile]=$(cat <<EOF
 if (interactive() && Sys.getenv("RSTUDIO") == "") {
   Sys.setenv(TERM_PROGRAM = "vscode")
   source(file.path(Sys.getenv("HOME"), ".vscode-R", "init.R"))
@@ -625,7 +625,7 @@ local({
   options(repos = r)})
 EOF
 )
-S_CONFIG_CONTENTS["bash_profile"]=$(cat <<EOF
+S_CONFIG_CONTENTS[bash_profile]=$(cat <<EOF
 # Set prompt to standard bash prompt instead of the one from the image
 export PS1='\u@\h:\w\$ '
 source \$HOME/.bashrc
@@ -648,7 +648,7 @@ alias regjob='ssh -t li03c04 regjob'
 alias ll='ls -l'
 EOF
 )
-S_CONFIG_CONTENTS["bashrc"]=$(cat <<EOF
+S_CONFIG_CONTENTS[bashrc]=$(cat <<EOF
 bsub() {
     bsubcmd=$S_BSUBCMD
     if module is-loaded lsf && module is-loaded CPAN &> /dev/null; then
@@ -684,7 +684,7 @@ alias lsf_enable="ml lsf CPAN"
 alias lsf_disable="ml -lsf -CPAN"
 EOF
 )
-S_CONFIG_CONTENTS["config.fish"]=$(cat <<EOF
+S_CONFIG_CONTENTS[fishconf]=$(cat <<EOF
 if status is-interactive
     # Commands to run in interactive sessions can go here
 end
@@ -738,7 +738,7 @@ alias lsf_disable="ml -lsf -CPAN"
 conda activate \$S_CONDAENV
 EOF
 )
-S_CONFIG_CONTENTS["zshrc"]=$(cat <<EOF
+S_CONFIG_CONTENTS[zshrc]=$(cat <<EOF
 bsub() {
     bsubcmd=$S_BSUBCMD
     if module is-loaded lsf && module is-loaded CPAN > /dev/null 2>&1; then
@@ -806,19 +806,20 @@ if [[ $S_UPDATE -eq 1 ]]; then
 EOF
 fi
 
-S_ABSENT_FILES=$(echo $(eval_heredoc <<EOF
-[ -f $S_FILE_BASHPROF ] || printf "bash_profile "
-[ -f $S_FILE_BASHRC ] || printf "bashrc "
-[ -f $S_FILE_FISHCONFIG ] || printf "config.fish "
-[ -f $S_FILE_ZSHRC ] || printf zshrc
-printf "\n"
+S_ABSENT_FILES=$(eval_heredoc <<EOF
+[ -f $S_FILE_BASHPROF ] || echo bash_profile
+[ -f $S_FILE_BASHRC ] || echo bashrc
+[ -f $S_FILE_FISHCONFIG ] || echo fishconf
+[ -f $S_FILE_ZSHRC ] || echo zshrc
+[ -f $S_FILE_RPROFILE ] || echo rprofile
 EOF
-) | sed -e 's/^ //' -e 's/ $//')
-
+)
 if [[ $S_ABSENT_FILES != "" ]]; then
   echodebug "Copying configfiles"
-  for file in ${S_ABSENT_FILES[@]}; do
+  echo "$S_ABSENT_FILES" | while read file; do
     fname="${S_FILES_SHELLCONF[$file]}"
+    echodebug "Copying $file to $fname"
+    echodebug "${S_CONFIG_CONTENTS[$file]}"
     if [[ "$S_HOSTNAME" == "minervarun" ]]; then
       echoinfo "Locally copying $file on minerva"
       echo "${S_CONFIG_CONTENTS[$file]}" > $fname
