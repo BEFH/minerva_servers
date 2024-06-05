@@ -17,8 +17,6 @@ From: rockylinux/rockylinux:8
   # dnf config-manager --set-enabled crb
   # /bin/crb enable
   ## end Rocky 9 only ##
-  
-  ln -s /usr/bin/file /bin/file
 
   ## Rocky 8 only ##
   dnf config-manager --set-enabled powertools
