@@ -11,12 +11,14 @@ From: rockylinux/rockylinux:8
   dnf install -y --allowerasing \
     dnf-plugins-core wget curl openssh-clients zsh gzip bzip2 xz git which \
     libnsl libxcrypt compat-openssl10 acl epel-release git diffutils iputils \
-    zip unzip traceroute bind-utils net-tools procps-ng lsof
+    zip unzip traceroute bind-utils net-tools procps-ng lsof file
 
   ## Rocky 9 only ##
   # dnf config-manager --set-enabled crb
   # /bin/crb enable
   ## end Rocky 9 only ##
+  
+  ln -s /usr/bin/file /bin/file
 
   ## Rocky 8 only ##
   dnf config-manager --set-enabled powertools
