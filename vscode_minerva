@@ -11,9 +11,10 @@
 #                  : Andreas Lugmayr, Mike Boss                               #
 #  Date            : October 2021                                             #
 #  Location        : Mount Sinai (originally ETH Zurich)                      #
-#  Version         : 0.8.9                                                    #
+#  Version         : 0.8.10                                                    #
 #  Change history  :                                                          #
 #                                                                             #
+#  04.06.2024    Prevent crashes from the linking of xalt                     #
 #  04.05.2024    Include .Rprofile allowing R integration from other envs     #
 #  04.05.2024    Do not print lsof warnings                                   #
 #  16.04.2024    Script works in zsh and bash. Zsh is now default             #
@@ -68,7 +69,7 @@
 ###############################################################################
 
 # Version
-S_VERSION="0.8.9"
+S_VERSION="0.8.10"
 
 # Script directory
 S_SCRIPTDIR=$HOME
@@ -1233,6 +1234,7 @@ export rsync_proxy=http://172.28.7.1:3128
 export no_proxy=localhost,*.chimera.hpc.mssm.edu,172.28.0.0/16
 
 SINGULARITY_SHELL=/bin/bash
+unset LD_PRELOAD # prevent xalt crashes
 
 #export XDG_RUNTIME_DIR="\$HOME/vsc_runtime"
 S_IP_REMOTE="\$(hostname -i)"
