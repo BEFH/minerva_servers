@@ -11,9 +11,10 @@
 #                  : Andreas Lugmayr, Mike Boss                               #
 #  Date            : October 2021                                             #
 #  Location        : Mount Sinai (originally ETH Zurich)                      #
-#  Version         : 0.8.10                                                    #
+#  Version         : 0.8.11                                                   #
 #  Change history  :                                                          #
 #                                                                             #
+#  29.07.2024    Change how to break out of sandbox; copy url to clipboard    #
 #  04.06.2024    Prevent crashes from the linking of xalt                     #
 #  04.05.2024    Include .Rprofile allowing R integration from other envs     #
 #  04.05.2024    Do not print lsof warnings                                   #
@@ -544,18 +545,21 @@ if [[ ! -f $S_WORKDIR/.config_template.json ]] || [[ $S_UPDATE -eq 1 ]]; then
         "bash-minerva": {
             "path": "bash",
             "icon": "terminal-bash",
-            "args": ["-c", ". ~/.bash_profile; minerva"]
+            "overrideName": true,
+            "args": ["-lc", "minerva"]
         },
         "zsh-minerva": {
-            "path": "zsh",
-            "args": ["-c", ". ~/.zshrc; minerva"]
+            "path": "bash",
+            "overrideName": true,
+            "args": ["-lc", "minerva zsh"]
         },
         "fish": {
             "path": "fish"
         },
         "fish-minerva": {
             "path": "fish",
-            "args": ["-c", "minerva"]
+            "overrideName": true,
+            "args": ["-lc", "minerva"]
         }
     },
     "terminal.integrated.scrollback": 100000,
@@ -628,16 +632,63 @@ EOF
 )
 S_CONFIG_CONTENTS[bash_profile]=$(cat <<EOF
 # Set prompt to standard bash prompt instead of the one from the image
-export PS1='\u@\h:\w\$ '
+export PS1='[vsc \u@\h \W]\$ '
 source \$HOME/.bashrc
 minerva() {
+  if [ -z "\$1" ]; then
+    SHELL="/bin/bash"
+  else
+    SHELL="\$1"
+  fi
   if [[ \$PWD == "/myhome" ]]; then
     minervadir='\$HOME'
   else
     minervadir=\$PWD
   fi
-  ssh -o StrictHostKeyChecking=accept-new -t \$(hostname -f) \\
-    "conda activate \$S_CONDAENV; ml proxies; cd \$minervadir; bash"
+  minerva_script=\$HOME/minerva_jobs/code_container/break_out/launch_minerva.sh
+  minerva_rc=\$HOME/minerva_jobs/code_container/break_out/launch_minerva_rc.sh
+  mkdir -p \$HOME/minerva_jobs/code_container/break_out
+  cat << EOFF > "\$minerva_rc"
+if [[ "\$SHELL" == "zsh" ]] || [[ "\$SHELL" == "/usr/bin/zsh" ]]; then
+  if [ -f ~/.zshenv ]; then
+    source ~/.zshenv
+  fi
+  if [ -f ~/.zprofile ]; then
+    source ~/.zprofile
+  fi
+  if [ -f ~/.zshrc ]; then
+    source ~/.zshrc
+  fi
+  if [ -f ~/.zlogin ]; then
+    source ~/.zlogin
+  fi
+elif [[ "\$SHELL" == "bash" ]] || [[ "\$SHELL" == "/bin/bash" ]]; then
+  if [ -f ~/.bash_profile ]; then
+    source ~/.bash_profile
+  elif [ -f ~/.bashrc ]; then
+    source ~/.bashrc
+  fi
+  export PS1='[min \u@\h \W]\$ '
+fi
+conda deactivate
+conda deactivate
+conda deactivate
+conda activate \$S_CONDAENV
+ml proxies
+EOFF
+  cat << EOFF > "\$minerva_script"
+#!/bin/bash
+cd \$minervadir
+if [[ "\$SHELL" == "/bin/bash" ]] || [[ "\$SHELL" == "bash" ]]; then
+  bash --rcfile \$minerva_rc
+else
+  \$SHELL -lc "source \$minerva_rc; exec \$SHELL"
+fi
+EOFF
+  chmod +x \$minerva_script
+  ml lsf CPAN
+  battach -L \$minerva_script \$LSB_JOBID
+  rm -f \$minerva_script &> /dev/null
   exit 0
 }
 if [[ -d "/sc/arion/projects/load/scripts" ]]; then
@@ -712,8 +763,13 @@ function minerva
   else
     set minervadir \$PWD
   end
-  ssh -o StrictHostKeyChecking=accept-new -t (hostname) \\
-    "conda activate \$S_CONDAENV; ml proxies; cd \$minervadir; fish"
+  set minerva_script \$HOME/minerva_jobs/code_container/launch_minerva.fish
+  echo \#!/usr/bin/env fish > \$minerva_script
+  echo fish -lc "\"conda activate \$S_CONDAENV; ml proxies; cd \$minervadir; fish\"" >> \$minerva_script
+  chmod +x \$minerva_script
+  ml lsf CPAN
+  battach -L \$minerva_script \$LSB_JOBID
+  rm -f \$minerva_script &> /dev/null
   exit 0
 end
 
@@ -772,17 +828,6 @@ if [ -f "/opt/conda/etc/profile.d/mamba.sh" ]; then
 fi
 # <<< conda initialize <<<
 
-minerva() {
-  if [[ \$PWD == "/myhome" ]]; then
-    minervadir='\$HOME'
-  else
-    minervadir=\$PWD
-  fi
-  ssh -o StrictHostKeyChecking=accept-new -t \$(hostname -f) \\
-    "conda activate \$S_CONDAENV; ml proxies; cd \$minervadir; zsh"
-  exit 0
-}
-
 if [[ -d "/sc/arion/projects/load/scripts" ]]; then
   export PATH="/sc/arion/projects/load/scripts:\$PATH"
 fi
@@ -792,6 +837,7 @@ alias regjob='ssh -t li03c04 regjob'
 alias ll='ls -l'
 alias lsf_enable="ml lsf CPAN"
 alias lsf_disable="ml -lsf -CPAN"
+alias minerva="bash -lc 'minerva zsh'"
 
 conda activate \$S_CONDAENV
 EOF
@@ -892,6 +938,16 @@ macos_open () {
   fi
 }
 
+clipboard_copy () {
+  if [[ "$OSTYPE" == "linux-gnu" ]]; then
+    printf $1 | xclip -selection clipboard
+  elif [[ "$OSTYPE" == "darwin"* ]]; then
+    printf $1 | pbcopy
+  elif [[ "$OSTYPE" == "msys" ]]; then
+    printf $1 | clip
+  fi
+}
+
 instructs_mrun() {
   echoinfo "Choose an available port on your local computer and replace"
   echoinfo "LOCAL_PORT in the following command with the chosen port:"
@@ -958,7 +1014,7 @@ if [ -f $S_RCI ]; then
       echoinfo "Connecting to url $RC_URL"
       if [[ "$OSTYPE" == "linux-gnu" ]]; then
         if which wlslview 2>1 > /dev/null; then
-          wslview $S_URL # USING Windows Subsystem for Linux
+          wslview $RC_URL # USING Windows Subsystem for Linux
         elif ! [ -z ${WSLENV+x} ]; then
           echoalert "Your are using Windows Subsystem for Linux,"
           echoalert "but wslu is not available.\n"
@@ -972,6 +1028,8 @@ if [ -f $S_RCI ]; then
       elif [[ "$OSTYPE" == "msys" ]]; then
         start $RC_URL
       fi
+    else
+      clipboard_copy $RC_URL
     fi
     exit 0
   else
@@ -1298,6 +1356,11 @@ chmod +x $S_TMP/home/.launch_r.sh
 
 log_vscode="$S_WORKDIR/vscode$S_SESSION_\$LSB_JOBID.vscode.log"
 
+conda deactivate
+conda deactivate
+conda deactivate
+conda deactivate
+
 echo "Starting VSCode server on port \$S_PORT_REMOTE ..."
 singularity run \\
   --bind /sys/fs/cgroup/:/sys/fs/cgroup/:ro \\
@@ -1579,6 +1642,8 @@ else
   S_FWDCMD=$(echo $S_FWDCMD | sed "s/minervarun/minerva/")
 fi
 
+S_URL="http://localhost:$S_LOCAL_PORT?tkn=$S_REMOTE_TOKEN"
+
 # print information about IP, ports and token
 echoinfo "Server info:"
 echo
@@ -1587,7 +1652,7 @@ echo -e "Remote IP address  : $S_REMOTE_IP"
 echo -e "Remote port        : $S_REMOTE_PORT"
 echo -e "Local port         : $S_LOCAL_PORT"
 echo -e "SSH tunnel command : $S_FWDCMD"
-echo -e "URL                : http://localhost:$S_LOCAL_PORT?tkn=$S_REMOTE_TOKEN"
+echo -e "URL                : $S_URL"
 echo -e "Remote token       : $S_REMOTE_TOKEN"
 echo
 
@@ -1598,7 +1663,7 @@ Remote IP address : $S_REMOTE_IP
 Remote port       : $S_REMOTE_PORT
 Local port        : $S_LOCAL_PORT
 SSH tunnel        : $S_FWDCMD
-URL               : http://localhost:$S_LOCAL_PORT?tkn=$S_REMOTE_TOKEN
+URL               : $S_URL
 BJOB ID           : $S_BJOB_ID
 Remote token      : $S_REMOTE_TOKEN
 EOF
@@ -1631,8 +1696,9 @@ EOF
 if [[ $S_HOSTNAME == "minervarun" ]]; then
   instructs_mrun
 elif [[ $S_OPEN_BROWSER -eq 0 ]]; then
-  echoinfo "Please open the following URL in your browser:"
-  echoinfo "http://localhost:$S_LOCAL_PORT?tkn=$S_REMOTE_TOKEN"
+  echoinfo "Please paste the following URL in your browser:"
+  echoinfo "$S_URL"
+  clipboard_copy "$S_URL"
 else
   # save url in variable
   S_URL=http://localhost:$S_LOCAL_PORT
