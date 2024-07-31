@@ -632,7 +632,7 @@ EOF
 )
 S_CONFIG_CONTENTS[bash_profile]=$(cat <<EOF
 # Set prompt to standard bash prompt instead of the one from the image
-export PS1='[vsc \\u@\h \W]\$ '
+export PS1='[vsc \\\\u@\h \W]\$ '
 source \$HOME/.bashrc
 minerva() {
   if [ -z "\$1" ]; then
@@ -668,7 +668,7 @@ elif [[ "\$SHELL" == "bash" ]] || [[ "\$SHELL" == "/bin/bash" ]]; then
   elif [ -f ~/.bashrc ]; then
     source ~/.bashrc
   fi
-  export PS1='[min \\u@\h \W]\$ '
+  export PS1='[min \\\\u@\h \W]\$ '
 fi
 conda deactivate
 conda deactivate
@@ -680,7 +680,7 @@ EOFF
 #!/bin/bash
 cd \$minervadir
 if [[ "\$SHELL" == "/bin/bash" ]] || [[ "\$SHELL" == "bash" ]]; then
-  bash --rcfile \$minerva_rc
+  /bin/bash --rcfile \$minerva_rc
 else
   \$SHELL -lc "source \$minerva_rc; exec \$SHELL"
 fi
