@@ -11,9 +11,10 @@
 #                  : Andreas Lugmayr, Mike Boss                               #
 #  Date            : October 2021                                             #
 #  Location        : Mount Sinai (originally ETH Zurich)                      #
-#  Version         : 0.8.11                                                   #
+#  Version         : 0.8.12                                                   #
 #  Change history  :                                                          #
 #                                                                             #
+#  08.08.2024    Unset SINGULARITY_APPNAME when starting minerva sessions     #
 #  29.07.2024    Change how to break out of sandbox; copy url to clipboard    #
 #  04.06.2024    Prevent crashes from the linking of xalt                     #
 #  04.05.2024    Include .Rprofile allowing R integration from other envs     #
@@ -70,7 +71,7 @@
 ###############################################################################
 
 # Version
-S_VERSION="0.8.10"
+S_VERSION="0.8.12"
 
 # Script directory
 S_SCRIPTDIR=$HOME
@@ -687,6 +688,7 @@ fi
 EOFF
   chmod +x \$minerva_script
   ml lsf CPAN
+  unset SINGULARITY_APPNAME
   battach -L \$minerva_script \$LSB_JOBID
   rm -f \$minerva_script &> /dev/null
   exit 0
@@ -768,6 +770,7 @@ function minerva
   echo fish -lc "\"conda activate \$S_CONDAENV; ml proxies; cd \$minervadir; fish\"" >> \$minerva_script
   chmod +x \$minerva_script
   ml lsf CPAN
+  set -e SINGULARITY_APPNAME
   battach -L \$minerva_script \$LSB_JOBID
   rm -f \$minerva_script &> /dev/null
   exit 0
