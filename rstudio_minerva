@@ -11,9 +11,10 @@
 #                  : Andreas Lugmayr, Mike Boss                               #
 #  Date            : October 2021                                             #
 #  Location        : Mount Sinai (originally ETH Zurich)                      #
-#  Version         : 0.8.8                                                    #
+#  Version         : 0.8.12                                                   #
 #  Change history  :                                                          #
 #                                                                             #
+#  23.08.2.24    Do not check versions for BASH                               #
 #  04.05.2024    Do not print lsof warnings                                   #
 #  16.04.2024    Script works in zsh and bash. Zsh is now default             #
 #  16.04.2024    Auto-generate password; allow upgrade of configs             #
@@ -244,14 +245,14 @@ exit 1
 # Parse configuration options                                                 #
 ###############################################################################
 
-# Check that the BASH version is at least 5.0 and exit if not
-runshell=$(ps -o args= -p $$ | grep -Em 1 -o '\w{0,5}sh')
-if [[ ${BASH_VERSION%%.*} -lt 5 ]] && [[ $runshell != zsh ]]; then
-  echoerror "This script requires BASH version 5.0 or higher"
-  exit 1
-elif [[ $runshell == zsh ]]; then
-  setopt BASH_REMATCH
-fi
+## Check that the BASH version is at least 5.0 and exit if not
+#runshell=$(ps -o args= -p $$ | grep -Em 1 -o '\w{0,5}sh')
+#if [[ ${BASH_VERSION%%.*} -lt 5 ]] && [[ $runshell != zsh ]]; then
+#  echoerror "This script requires BASH version 5.0 or higher"
+#  exit 1
+#elif [[ $runshell == zsh ]]; then
+#  setopt BASH_REMATCH
+#fi
 
 while [[ $# -gt 0 ]]; do
   case $1 in
