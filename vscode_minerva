@@ -14,6 +14,7 @@
 #  Version         : 0.8.12                                                   #
 #  Change history  :                                                          #
 #                                                                             #
+#  23.08.2024    Ignore sh when detecting shell                               #
 #  08.08.2024    Unset SINGULARITY_APPNAME when starting minerva sessions     #
 #  29.07.2024    Change how to break out of sandbox; copy url to clipboard    #
 #  04.06.2024    Prevent crashes from the linking of xalt                     #
@@ -250,7 +251,7 @@ exit 1
 ###############################################################################
 
 # Check that the BASH version is at least 5.0 and exit if not
-runshell=$(ps -o args= -p $$ | grep -Em 1 -o '\w{0,5}sh')
+runshell=$(ps -o args= -p $$ | grep -Em 1 -o '\w{1,5}sh')
 if [[ ${BASH_VERSION%%.*} -lt 5 ]] && [[ $runshell != zsh ]]; then
   echoerror "This script requires BASH version 5.0 or higher"
   exit 1
