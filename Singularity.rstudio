@@ -1,5 +1,5 @@
 Bootstrap: docker
-From: rocker/rstudio:4.3
+From: rocker/rstudio:4.4
 
 %post
     # lua-posix lua-posix-dev \
