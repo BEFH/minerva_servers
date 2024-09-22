@@ -14,6 +14,7 @@
 #  Version         : 0.8.12                                                   #
 #  Change history  :                                                          #
 #                                                                             #
+#  22.09.2024    Fix remote run reconnection instructions                     #
 #  23.08.2024    Ignore sh when selecting shell                               #
 #  04.05.2024    Do not print lsof warnings                                   #
 #  16.04.2024    Script works in zsh and bash. Zsh is now default             #
@@ -700,15 +701,18 @@ if [ -f $S_RCI ]; then
     cat $S_RCI
     echo
 
+    RC_PRT_REMOTE=$(sed -nE 's/^Remote port +: (.+)/\1/p' $S_RCI)
+    RC_IP_REMOTE=$(sed -nE 's/^Remote IP address +: (.+)/\1/p' $S_RCI)
+
     if [[ "$S_HOSTNAME" == "minervarun" ]]; then
       S_FWDCMD=$(sed -nE 's/^SSH tunnel +: (.+)/\1/p' $S_RCI)
       S_PASSWORD=$(sed -nE 's/^Password +: (.+)/\1/p' $S_RCI)
+      S_REMOTE_PORT=$RC_PRT_REMOTE
+      S_REMOTE_IP=$RC_IP_REMOTE
       instructs_mrun
       exit 0
     fi
 
-    RC_PRT_REMOTE=$(sed -nE 's/^Remote port +: (.+)/\1/p' $S_RCI)
-    RC_IP_REMOTE=$(sed -nE 's/^Remote IP address +: (.+)/\1/p' $S_RCI)
     RC_URL=$(sed -nE 's/^URL[a-zA-Z ]+: (.+)/\1/p' $S_RCI)
     RC_PRT=$(sed -nE 's/^Local[a-zA-Z ]+: (.+)/\1/p' $S_RCI)
     RC_SSH="ssh $S_HOSTNAME -L $RC_PRT:$RC_IP_REMOTE:$RC_PRT_REMOTE -fNT"
