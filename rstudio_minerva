@@ -11,9 +11,10 @@
 #                  : Andreas Lugmayr, Mike Boss                               #
 #  Date            : October 2021                                             #
 #  Location        : Mount Sinai (originally ETH Zurich)                      #
-#  Version         : 0.8.12                                                   #
+#  Version         : 0.8.13                                                   #
 #  Change history  :                                                          #
 #                                                                             #
+#  04.12.2024    Change Minerva detection for compatibility with new cluster  #
 #  22.09.2024    Fix remote run reconnection instructions                     #
 #  23.08.2024    Ignore sh when selecting shell                               #
 #  04.05.2024    Do not print lsof warnings                                   #
@@ -65,13 +66,13 @@
 ###############################################################################
 
 # Version
-S_VERSION="0.8.7"
+S_VERSION="0.8.13"
 
 # Script directory
 S_SCRIPTDIR=$HOME
 
 # hostname of the cluster to connect to
-if [ -d /etc/lsb-release.d ]; then
+if [ -f /usr/local/bin/Minerva_help ]; then
   S_HOSTNAME="minervarun"
 elif grep -q 'Host minerva[[:space:]]*$' $HOME/.ssh/config > /dev/null 2>&1; then
   S_HOSTNAME="minerva"
