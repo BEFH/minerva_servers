@@ -10,12 +10,14 @@ From: rockylinux/rockylinux:9
   # fish not available in Rocky 8
   dnf install -y --allowerasing \
     dnf-plugins-core wget curl openssh-clients zsh gzip bzip2 xz git which \
-    libnsl libxcrypt-compat compat-openssl10 acl epel-release git diffutils iputils \
+    libnsl libxcrypt-compat acl epel-release git diffutils iputils \
     zip unzip traceroute bind-utils net-tools procps-ng lsof file
 
   ## Rocky 9 only ##
   dnf config-manager --set-enabled crb
   /bin/crb enable
+  dnf -y localinstall "https://pkgs.dyn.su/el9/base/x86_64/raven-release.el9.noarch.rpm" #for compat-openssl10
+  dnf clean all && dnf update -y
   ## end Rocky 9 only ##
 
   ## Rocky 8 only ##
@@ -24,8 +26,8 @@ From: rockylinux/rockylinux:9
   #dnf install -y fish.rpm
   #rm -f fish.rpm
   ## end Rocky 8 only ##
-
-  dnf install -y Lmod lua-devel eza fish
+  
+  dnf install -y Lmod lua-devel eza fish compat-openssl10
   ln -s $(which eza) /usr/local/bin/exa
 
   # Install Conda
