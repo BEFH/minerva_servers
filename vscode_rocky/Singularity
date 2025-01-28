@@ -27,7 +27,11 @@ From: rockylinux/rockylinux:9
   #rm -f fish.rpm
   ## end Rocky 8 only ##
   
-  dnf install -y Lmod lua-devel eza fish # compat-openssl10
+  dnf install -y Lmod lua-devel fish # compat-openssl10 eza
+  wget https://github.com/eza-community/eza/releases/download/v0.20.18/eza_x86_64-unknown-linux-gnu.tar.gz
+  tar xf eza_x86_64-unknown-linux-gnu.tar.gz
+  rm eza_x86_64-unknown-linux-gnu.tar.gz
+  mv eza /usr/local/bin/eza
   ln -s $(which eza) /usr/local/bin/exa
 
   # Install Conda
