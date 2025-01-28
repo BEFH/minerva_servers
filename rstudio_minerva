@@ -11,9 +11,11 @@
 #                  : Andreas Lugmayr, Mike Boss                               #
 #  Date            : October 2021                                             #
 #  Location        : Mount Sinai (originally ETH Zurich)                      #
-#  Version         : 0.8.13                                                   #
+#  Version         : 0.9.0                                                    #
 #  Change history  :                                                          #
 #                                                                             #
+#  28.01.2025    Fix Minerva login addresses and switch to battach;           #
+#                Switch to apptainer.                                         #
 #  04.12.2024    Change Minerva detection for compatibility with new cluster  #
 #  22.09.2024    Fix remote run reconnection instructions                     #
 #  23.08.2024    Ignore sh when selecting shell                               #
@@ -66,7 +68,7 @@
 ###############################################################################
 
 # Version
-S_VERSION="0.8.13"
+S_VERSION="0.9.0"
 
 # Script directory
 S_SCRIPTDIR=$HOME
@@ -129,9 +131,6 @@ S_OPEN_BROWSER=0
 
 # Remote start
 S_REMOTE_START="null"
-
-# Print version
-S_PRINT_VERSION=0
 
 ###############################################################################
 # Text coloring                                                               #
@@ -247,7 +246,7 @@ exit 1
 # Parse configuration options                                                 #
 ###############################################################################
 
-## Check that the BASH version is at least 5.0 and exit if not
+# Check that the BASH version is at least 5.0 and exit if not
 runshell=$(ps -o args= -p $$ | grep -Em 1 -o '\w{1,5}sh')
 if [[ ${BASH_VERSION%%.*} -lt 5 ]] && [[ $runshell != zsh ]]; then
   echoerror "This script requires BASH version 5.0 or higher"
@@ -643,6 +642,7 @@ if [[ $S_UPDATE -eq 1 || ! -e $S_IMAGE ]]; then
     echo $(echoinfo "Pulling image to $S_IMAGE")
     ml singularity/3.6.4
     singularity pull -F --name $S_IMAGE --arch amd64 $S_IMAGE_URL
+    ml -singularity
   fi
 fi
 EOF
@@ -992,11 +992,65 @@ fi
 
 S_CONTENTS_BASHPROF=$(cat <<EOF
 minerva() {
-  ssh -o StrictHostKeyChecking=accept-new -t \$(hostname -f) \\
-    "conda activate $S_CONDAENV; ml proxies; cd \$PWD; \\\$SHELL"
+  if [ -z "\$1" ]; then
+    SHELL="/bin/bash"
+  else
+    SHELL="\$1"
+  fi
+  if [[ \$PWD == "/myhome" ]]; then
+    minervadir='\$HOME'
+  else
+    minervadir=\$PWD
+  fi
+  minerva_script=\$HOME/minerva_jobs/rstudio/break_out/launch_minerva.sh
+  minerva_rc=\$HOME/minerva_jobs/rstudio/break_out/launch_minerva_rc.sh
+  mkdir -p \$HOME/minerva_jobs/rstudio/break_out
+  cat << EOFF > "\$minerva_rc"
+if [[ "\$SHELL" == "zsh" ]] || [[ "\$SHELL" == "/usr/bin/zsh" ]]; then
+  if [ -f ~/.zshenv ]; then
+    source ~/.zshenv
+  fi
+  if [ -f ~/.zprofile ]; then
+    source ~/.zprofile
+  fi
+  if [ -f ~/.zshrc ]; then
+    source ~/.zshrc
+  fi
+  if [ -f ~/.zlogin ]; then
+    source ~/.zlogin
+  fi
+elif [[ "\$SHELL" == "bash" ]] || [[ "\$SHELL" == "/bin/bash" ]]; then
+  if [ -f ~/.bash_profile ]; then
+    source ~/.bash_profile
+  elif [ -f ~/.bashrc ]; then
+    source ~/.bashrc
+  fi
+  export PS1='[min \\u@\h \W]\$ '
+fi
+conda deactivate
+conda deactivate
+conda deactivate
+conda activate \$S_CONDAENV
+ml proxies
+EOFF
+  cat << EOFF > "\$minerva_script"
+#!/bin/bash
+cd \$minervadir
+if [[ "\$SHELL" == "/bin/bash" ]] || [[ "\$SHELL" == "bash" ]]; then
+  /bin/bash --rcfile \$minerva_rc
+else
+  \$SHELL -lc "source \$minerva_rc; exec \$SHELL"
+fi
+EOFF
+  chmod +x \$minerva_script
+  ml lsf CPAN
+  unset SINGULARITY_APPNAME
+  battach -L \$minerva_script \$LSB_JOBID
+  rm -f \$minerva_script &> /dev/null
+  exit 0
 }
-alias ijob='conda deactivate; echo leaving sandbox; ssh -t li03c03 ijob'
-alias regjob='conda deactivate; echo leaving sandbox; ssh -t li03c03 regjob'
+alias ijob='conda deactivate; echo leaving sandbox; ssh -t li04e03 ijob'
+alias regjob='conda deactivate; echo leaving sandbox; ssh -t li04e03 regjob'
 PATH=\$(echo \$PATH |
   awk -v RS=':' '!/conda/ { printf "%s%s", sep, \$0; sep = ":" }')
 LD_LIBRARY_PATH=\$(echo \$LD_LIBRARY_PATH |
@@ -1075,7 +1129,8 @@ SINGULARITY_SHELL=/bin/bash
 S_IP_REMOTE="\$(hostname -i)"
 echo "Remote IP:\$S_IP_REMOTE" >> $S_FILE_IP
 
-module load singularity/3.6.4
+module unload singularity
+module load apptainer/1.2.5
 
 for lf in \$lockfiles; do
   if [[ -d \$lf ]]; then

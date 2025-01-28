@@ -16,7 +16,7 @@ From: rockylinux/rockylinux:9
   ## Rocky 9 only ##
   dnf config-manager --set-enabled crb
   /bin/crb enable
-  dnf -y localinstall "https://pkgs.dyn.su/el9/base/x86_64/raven-release.el9.noarch.rpm" #for compat-openssl10
+  # dnf -y localinstall "https://pkgs.dyn.su/el9/base/x86_64/raven-release.el9.noarch.rpm" #for compat-openssl10
   dnf clean all && dnf update -y
   ## end Rocky 9 only ##
 
@@ -27,7 +27,7 @@ From: rockylinux/rockylinux:9
   #rm -f fish.rpm
   ## end Rocky 8 only ##
   
-  dnf install -y Lmod lua-devel eza fish compat-openssl10
+  dnf install -y Lmod lua-devel eza fish # compat-openssl10
   ln -s $(which eza) /usr/local/bin/exa
 
   # Install Conda

@@ -11,9 +11,11 @@
 #                  : Andreas Lugmayr, Mike Boss                               #
 #  Date            : October 2021                                             #
 #  Location        : Mount Sinai (originally ETH Zurich)                      #
-#  Version         : 0.8.12                                                   #
+#  Version         : 0.9.0                                                    #
 #  Change history  :                                                          #
 #                                                                             #
+#  28.01.2025    Fix Minerva login addresses and shell prompts;               #
+#                Switch to apptainer.                                         #
 #  04.12.2024    Change Minerva detection for compatibility with new cluster  #
 #  23.08.2024    Ignore sh when detecting shell                               #
 #  08.08.2024    Unset SINGULARITY_APPNAME when starting minerva sessions     #
@@ -73,7 +75,7 @@
 ###############################################################################
 
 # Version
-S_VERSION="0.8.13"
+S_VERSION="0.9.0"
 
 # Script directory
 S_SCRIPTDIR=$HOME
@@ -635,7 +637,7 @@ EOF
 )
 S_CONFIG_CONTENTS[bash_profile]=$(cat <<EOF
 # Set prompt to standard bash prompt instead of the one from the image
-export PS1='[vsc \\\\u@\h \W]\$ '
+export PS1='[vsc \\u@\h \W]\$ '
 source \$HOME/.bashrc
 minerva() {
   if [ -z "\$1" ]; then
@@ -671,7 +673,7 @@ elif [[ "\$SHELL" == "bash" ]] || [[ "\$SHELL" == "/bin/bash" ]]; then
   elif [ -f ~/.bashrc ]; then
     source ~/.bashrc
   fi
-  export PS1='[min \\\\u@\h \W]\$ '
+  export PS1='[min \\u@\h \W]\$ '
 fi
 conda deactivate
 conda deactivate
@@ -698,9 +700,9 @@ EOFF
 if [[ -d "/sc/arion/projects/load/scripts" ]]; then
   export PATH="/sc/arion/projects/load/scripts:\$PATH"
 fi
-alias bblame='ssh -t li03c04 bblame'
-alias ijob='ssh -t li03c04 ijob'
-alias regjob='ssh -t li03c04 regjob'
+alias bblame='ssh -t li04e04 bblame'
+alias ijob='ssh -t li04e04 ijob'
+alias regjob='ssh -t li04e04 regjob'
 alias ll='ls -l'
 EOF
 )
@@ -791,9 +793,9 @@ if test -d "/sc/arion/projects/load/scripts"
   set -x PATH "/sc/arion/projects/load/scripts" \$PATH
 end
 
-alias bblame 'ssh -t li03c04 bblame'
-alias ijob 'ssh -t li03c04 ijob'
-alias regjob 'ssh -t li03c04 regjob'
+alias bblame 'ssh -t li04e04 bblame'
+alias ijob 'ssh -t li04e04 ijob'
+alias regjob 'ssh -t li04e04 regjob'
 alias lsf_enable="ml lsf CPAN"
 alias lsf_disable="ml -lsf -CPAN"
 
@@ -836,9 +838,9 @@ fi
 if [[ -d "/sc/arion/projects/load/scripts" ]]; then
   export PATH="/sc/arion/projects/load/scripts:\$PATH"
 fi
-alias bblame='ssh -t li03c04 bblame'
-alias ijob='ssh -t li03c04 ijob'
-alias regjob='ssh -t li03c04 regjob'
+alias bblame='ssh -t li04e04 bblame'
+alias ijob='ssh -t li04e04 ijob'
+alias regjob='ssh -t li04e04 regjob'
 alias ll='ls -l'
 alias lsf_enable="ml lsf CPAN"
 alias lsf_disable="ml -lsf -CPAN"
@@ -913,6 +915,7 @@ if [[ $S_UPDATE -eq 1 || ! -e $S_IMAGE ]]; then
     echo $(echoinfo "Pulling image to $S_IMAGE")
     ml singularity/3.6.4
     singularity pull -F --name $S_IMAGE --arch amd64 $S_IMAGE_URL
+    ml -singularity
   fi
 fi
 if [[ $S_UPDATE -eq 1 || ! -e $SVSC_APP ]]; then
@@ -1303,7 +1306,8 @@ unset LD_PRELOAD # prevent xalt crashes
 S_IP_REMOTE="\$(hostname -i)"
 echo "Remote IP:\$S_IP_REMOTE" >> $S_FILE_IP
 
-module load singularity/3.6.4
+module unload singularity
+module load apptainer/1.2.5
 
 for lf in \$lockfiles; do
   if [[ -d \$lf ]]; then
