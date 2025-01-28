@@ -15,7 +15,8 @@
 #  Change history  :                                                          #
 #                                                                             #
 #  28.01.2025    Fix Minerva login addresses and shell prompts;               #
-#                Switch to apptainer.                                         #
+#                Switch to apptainer; Fix container download;                 #
+#                Allow startup latency                                        #
 #  04.12.2024    Change Minerva detection for compatibility with new cluster  #
 #  23.08.2024    Ignore sh when detecting shell                               #
 #  08.08.2024    Unset SINGULARITY_APPNAME when starting minerva sessions     #
@@ -906,17 +907,15 @@ fi
 
 VSC_URL="https://code.visualstudio.com/sha/download?build=stable&os=cli-alpine-x64"
 eval_heredoc <<EOF
-if [[ $S_UPDATE -eq 1 || ! -e $S_IMAGE ]]; then
-  if [[ $S_DISTRO == "custom" ]]; then
+if [[ $$S_DISTRO == "custom" && ! -e $S_IMAGE ]]; then
     echo $(echoerror "Specified image \"$S_IMAGE\" does not exist")
     exit 1
-  else
+elif [[ $S_UPDATE -eq 1 || ! -e $S_IMAGE ]]; then
     echo $(echoinfo "Pulling the default image $S_IMAGE_URL")
     echo $(echoinfo "Pulling image to $S_IMAGE")
-    ml singularity/3.6.4
+  ml -singularity -singularity-ce -q
+  ml apptainer/1.2.5
     singularity pull -F --name $S_IMAGE --arch amd64 $S_IMAGE_URL
-    ml -singularity
-  fi
 fi
 if [[ $S_UPDATE -eq 1 || ! -e $SVSC_APP ]]; then
   echo $(echoinfo "Downloading the latest VSCode app version")
@@ -1570,19 +1569,34 @@ ENDSSH
 ENDSSH
   fi
 
-  # get remote ip, port and token from files stored on Minerva
-  if [[ $S_HOSTNAME == "minervarun" ]]; then
-    S_CONTENTS_IP=$(cat $S_FILE_IP)
-  else
-    S_CONTENTS_IP=$(ssh $S_HOSTNAME "cat $S_FILE_IP")
-  fi
+  nostat=1
+  statry=0
 
-  echodebug "Contents of the IP file:"
-  if [[ $S_DEBUG -eq 1 ]]; then
-    echo "$S_CONTENTS_IP"
-  fi
+  while true; do
+    # get remote ip, port and token from files stored on Minerva
+    if [[ $S_HOSTNAME == "minervarun" ]]; then
+      S_CONTENTS_IP=$(cat $S_FILE_IP)
+    else
+      S_CONTENTS_IP=$(ssh $S_HOSTNAME "cat $S_FILE_IP")
+    fi
 
-  if ! echo "$S_CONTENTS_IP" | grep -q Status; then
+    echodebug "Contents of the IP file:"
+    if [[ $S_DEBUG -eq 1 ]]; then
+      echo "$S_CONTENTS_IP"
+    fi
+    
+    if [[ $statry -eq 3 ]] || echo "$S_CONTENTS_IP" | grep -q Status; then
+      nostat=0
+      break
+    fi
+
+    echowarn "Could not get status. Trying again."
+    sleep 2
+    ((statry++))
+  done
+
+
+  if [[ $nostat -eq 1 ]]; then
     echoerror "Server did not report status"
     exit 1
   fi
