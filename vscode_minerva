@@ -908,14 +908,15 @@ fi
 VSC_URL="https://code.visualstudio.com/sha/download?build=stable&os=cli-alpine-x64"
 eval_heredoc <<EOF
 if [[ $$S_DISTRO == "custom" && ! -e $S_IMAGE ]]; then
-    echo $(echoerror "Specified image \"$S_IMAGE\" does not exist")
-    exit 1
+  echo $(echoerror "Specified image \"$S_IMAGE\" does not exist")
+  exit 1
 elif [[ $S_UPDATE -eq 1 || ! -e $S_IMAGE ]]; then
-    echo $(echoinfo "Pulling the default image $S_IMAGE_URL")
-    echo $(echoinfo "Pulling image to $S_IMAGE")
+  source /etc/profile.d/modules.sh
+  echo $(echoinfo "Pulling the default image $S_IMAGE_URL")
+  echo $(echoinfo "Pulling image to $S_IMAGE")
   ml -singularity -singularity-ce -q
   ml apptainer/1.2.5
-    singularity pull -F --name $S_IMAGE --arch amd64 $S_IMAGE_URL
+  singularity pull -F --name $S_IMAGE --arch amd64 $S_IMAGE_URL
 fi
 if [[ $S_UPDATE -eq 1 || ! -e $SVSC_APP ]]; then
   echo $(echoinfo "Downloading the latest VSCode app version")
