@@ -633,17 +633,16 @@ else
 fi
 
 eval_heredoc <<EOF
-if [[ $S_UPDATE -eq 1 || ! -e $S_IMAGE ]]; then
-  if [[ $S_DISTRO == "custom" ]]; then
-    echo $(echoerror "Specified image \"$S_IMAGE\" does not exist")
-    exit 1
-  else
-    echo $(echoinfo "Pulling the default image $S_IMAGE_URL")
-    echo $(echoinfo "Pulling image to $S_IMAGE")
-    ml singularity/3.6.4
-    singularity pull -F --name $S_IMAGE --arch amd64 $S_IMAGE_URL
-    ml -singularity
-  fi
+if [[ $$S_DISTRO == "custom" && ! -e $S_IMAGE ]]; then
+  echo $(echoerror "Specified image \"$S_IMAGE\" does not exist")
+  exit 1
+elif [[ $S_UPDATE -eq 1 || ! -e $S_IMAGE ]]; then
+  source /etc/profile.d/modules.sh
+  echo $(echoinfo "Pulling the default image $S_IMAGE_URL")
+  echo $(echoinfo "Pulling image to $S_IMAGE")
+  ml -singularity -singularity-ce -q
+  ml apptainer/1.2.5
+  singularity pull -F --name $S_IMAGE --arch amd64 $S_IMAGE_URL
 fi
 EOF
 
@@ -991,7 +990,19 @@ if [[ $S_DEBUG -eq 1 ]]; then
 fi
 
 S_CONTENTS_BASHPROF=$(cat <<EOF
+export http_proxy=http://172.28.7.1:3128
+export https_proxy=http://172.28.7.1:3128
+export ftp_proxy=http://172.28.7.1:3128
+export rsync_proxy=http://172.28.7.1:3128
+export all_proxy=http://172.28.7.1:3128
+export no_proxy=localhost,*.chimera.hpc.mssm.edu,172.28.0.0/16
 minerva() {
+  if [[ -z "\$LSB_JOBID" ]]; then
+    LSB_JOBID=\$(cat \$HOME/.lsfjobid)
+  fi
+  if [[ -z "\$S_CONDAENV" ]]; then
+    S_CONDAENV=\$(cat \$HOME/.condaenv)
+  fi
   if [ -z "\$1" ]; then
     SHELL="/bin/bash"
   else
@@ -1002,9 +1013,9 @@ minerva() {
   else
     minervadir=\$PWD
   fi
-  minerva_script=\$HOME/minerva_jobs/rstudio/break_out/launch_minerva.sh
-  minerva_rc=\$HOME/minerva_jobs/rstudio/break_out/launch_minerva_rc.sh
-  mkdir -p \$HOME/minerva_jobs/rstudio/break_out
+  minerva_script=/sc/arion/scratch/\$USER/rstudio_break_out/launch_minerva.sh
+  minerva_rc=/sc/arion/scratch/\$USER/rstudio_break_out/launch_minerva_rc.sh
+  mkdir -p /sc/arion/scratch/\$USER/rstudio_break_out/
   cat << EOFF > "\$minerva_rc"
 if [[ "\$SHELL" == "zsh" ]] || [[ "\$SHELL" == "/usr/bin/zsh" ]]; then
   if [ -f ~/.zshenv ]; then
@@ -1031,19 +1042,19 @@ conda deactivate
 conda deactivate
 conda deactivate
 conda activate \$S_CONDAENV
-ml proxies
 EOFF
   cat << EOFF > "\$minerva_script"
 #!/bin/bash
 cd \$minervadir
-if [[ "\$SHELL" == "/bin/bash" ]] || [[ "\$SHELL" == "bash" ]]; then
-  /bin/bash --rcfile \$minerva_rc
+HOME=/hpc/users/\$USER
+if [[ "$SHELL" == "/bin/bash" ]] || [[ "$SHELL" == "bash" ]]; then
+  /bin/bash --rcfile $minerva_rc
 else
   \$SHELL -lc "source \$minerva_rc; exec \$SHELL"
 fi
 EOFF
   chmod +x \$minerva_script
-  ml lsf CPAN
+  source /hpc/lsf/conf/profile.lsf
   unset SINGULARITY_APPNAME
   battach -L \$minerva_script \$LSB_JOBID
   rm -f \$minerva_script &> /dev/null
@@ -1071,12 +1082,6 @@ S_CONTENTS_BASHPROF+=$(cat <<EOF
 . /opt/conda/etc/profile.d/mamba.sh && \\
 alias ll='ls -l' && \
 mamba activate $S_CONDAENV
-export http_proxy=http://172.28.7.1:3128
-export https_proxy=http://172.28.7.1:3128
-export ftp_proxy=http://172.28.7.1:3128
-export rsync_proxy=http://172.28.7.1:3128
-export all_proxy=http://172.28.7.1:3128
-export no_proxy=localhost,*.chimera.hpc.mssm.edu,172.28.0.0/16
 EOF
 )
 
@@ -1167,6 +1172,8 @@ mkdir -p $S_TMP/{run,var-lib-rstudio-server,home,tmp}
 
 export RSTUDIO_R_BIN=$S_PREFIX/bin/R
 export RSTUDIO_PY_BIN=$S_PREFIX/bin/python
+echo "\$LSB_JOBID" > $S_TMP/home/.lsfjobid
+echo "$S_CONDAENV" > $S_TMP/home/.condaenv
 
 if [ -z "$S_PREFIX" ]; then
   echo "Activate a conda env or specify CONDA_PREFIX"
@@ -1179,6 +1186,7 @@ echo "Starting rstudio service on port \$S_PORT_REMOTE ..."
 singularity run \\
   --bind $S_TMP/var-lib-rstudio-server:/var/lib/rstudio-server \\
   --bind /sys/fs/cgroup/:/sys/fs/cgroup/:ro \\
+  --bind  /hpc/lsf:/hpc/lsf:ro \\
   --bind $S_WORKDIR/database.conf:/etc/rstudio/database.conf \\
   --bind $S_WORKDIR/rsession.conf:/etc/rstudio/rsession.conf \\
   --bind $S_WORKDIR/rserver.conf:/etc/rstudio/rserver.conf \\
