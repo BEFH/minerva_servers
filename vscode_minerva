@@ -609,7 +609,7 @@ while read -r line; do
   code --install-extension "\$line"
 done < "\$HOME/.recommended_packages.txt"
 
-CONFIG_FILE="\$HOME/.config/Code/Server/data/Machine/settings.json"
+CONFIG_FILE="\$HOME/.config/Code/User/data/Machine/settings.json"
 TEMPLATE="\$HOME/.config_template.json"
 
 if [[ -f "\$CONFIG_FILE" ]]; then
