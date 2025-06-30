@@ -607,12 +607,29 @@ if [[ ! -f $S_WORKDIR/.setup_vscode.sh ]] || [[ $S_UPDATE -eq 1 ]]; then
 echo "Installing recommended extensions"
 while read -r line; do
   code --install-extension "\$line"
-done < ~/.recommended_packages.txt
+done < "\$HOME/.recommended_packages.txt"
 
-echo "To set up the configuration for VSCode, open the command palette with"
-printf "Cmd+Shift+P and type Preferences: Open Remote Settings \x28JSON\x29\n"
-echo "Then copy and paste the following:"
-sed "s|/myhome|\$HOME|" ~/.config_template.json 
+CONFIG_FILE="\$HOME/.config/Code/Server/data/Machine/settings.json"
+TEMPLATE="\$HOME/.config_template.json"
+
+if [[ -f "\$CONFIG_FILE" ]]; then
+  echo "Configuration file already exists at:"
+  echo "\$CONFIG_FILE"
+  echo "You can add options from the following if you'd like:"
+  echo "----------------------------------------"
+  sed "s|/myhome|\$HOME|" "\$TEMPLATE"
+  echo "----------------------------------------"
+  echo
+  echo "To manually edit the configuration, open the command palette with:"
+  printf "Cmd+Shift+P and type Preferences: Open Remote Settings (JSON)\n"
+  echo or just open \$CONFIG_FILE
+else
+  echo "Writing configuration file to:"
+  echo "\$CONFIG_FILE"
+  mkdir -p "\$(dirname "\$CONFIG_FILE")"
+  sed "s|/myhome|\$HOME|" "\$TEMPLATE" > "\$CONFIG_FILE"
+  echo "Configuration written."
+fi
 EOFF
   chmod +x $S_WORKDIR/.setup_vscode.sh
 fi
@@ -1443,7 +1460,7 @@ fi
 S_CONTENTS_JOB+="$(cat <<EOF
 
   $S_IMAGE serve-web --host \${S_IP_REMOTE} --port \$S_PORT_REMOTE \\
-  --server-data-dir ~/.config/Code/Server --accept-server-license-terms \\
+  --server-data-dir ~/.config/Code/User --accept-server-license-terms \\
   --log $VSC_LOG_LEVEL > \$log_vscode &
 
 echo VSCode started...
