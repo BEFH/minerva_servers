@@ -1443,7 +1443,7 @@ fi
 S_CONTENTS_JOB+="$(cat <<EOF
 
   $S_IMAGE serve-web --host \${S_IP_REMOTE} --port \$S_PORT_REMOTE \\
-  --user-data-dir ~/.config/Code/User --accept-server-license-terms \\
+  --server-data-dir ~/.config/Code/Server --accept-server-license-terms \\
   --log $VSC_LOG_LEVEL > \$log_vscode &
 
 echo VSCode started...
