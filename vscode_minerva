@@ -575,6 +575,7 @@ if [[ ! -f $S_WORKDIR/.config_template.json ]] || [[ $S_UPDATE -eq 1 ]]; then
     "r.rterm.option": [],
     "vsicons.dontShowNewVersionMessage": true,
     "terminal.integrated.defaultProfile.linux": "\$remote_shell",
+    "workbench.iconTheme": "vscode-icons",
 }
 EOFF
 fi
