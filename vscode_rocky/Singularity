@@ -4,6 +4,10 @@ From: rockylinux/rockylinux:9
 # perl-CPAN cpan install LSF::Base LSF::Batch
 
 %post
+  NODE_VERSION=24.7.0
+  EZA_VERSION=0.23.2
+  QUARTO_VERSION=1.7.34
+
   # Install necessary dependencies
   # libxcrypt-compat instead of libxcrypt in Rocky 9
   # compat-openssl10 not available in Rocky 9
@@ -27,8 +31,10 @@ From: rockylinux/rockylinux:9
   #rm -f fish.rpm
   ## end Rocky 8 only ##
   
-  dnf install -y Lmod lua-devel fish # compat-openssl10 eza
-  wget https://github.com/eza-community/eza/releases/download/v0.20.18/eza_x86_64-unknown-linux-gnu.tar.gz
+  dnf install -y Lmod lua-devel fish && \
+    dnf clean all && \
+    rm -rf /var/cache/dnf # compat-openssl10 eza
+  wget https://github.com/eza-community/eza/releases/download/v${EZA_VERSION}/eza_x86_64-unknown-linux-gnu.tar.gz
   tar xf eza_x86_64-unknown-linux-gnu.tar.gz
   rm eza_x86_64-unknown-linux-gnu.tar.gz
   mv eza /usr/local/bin/eza
@@ -40,6 +46,23 @@ From: rockylinux/rockylinux:9
   bash Miniforge3.sh -b -p /opt/conda && \
   rm Miniforge3.sh && \
   echo "done"
+
+  # install node
+
+  curl -fsSL https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz | \
+    tar -xJ -C /usr/local --strip-components=1 && \
+    ln -s /usr/local/bin/node /usr/bin/node && \
+    ln -s /usr/local/bin/npm /usr/bin/npm && \
+    ln -s /usr/local/bin/npx /usr/bin/npx
+
+  # Install quarto
+
+  curl -fsSL -o quarto.tar.gz \
+    https://github.com/quarto-dev/quarto-cli/releases/download/v${QUARTO_VERSION}/quarto-${QUARTO_VERSION}-linux-amd64.tar.gz && \
+    mkdir -p /opt/quarto && \
+    tar -xzf quarto.tar.gz -C /opt/quarto --strip-components=1 && \
+    ln -s /opt/quarto/bin/quarto /usr/local/bin/quarto && \
+    rm quarto.tar.gz
 
 %files
     vscode_rocky/start_code.sh /opt/start_code.sh
