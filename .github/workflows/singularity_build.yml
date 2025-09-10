@@ -7,7 +7,7 @@ on:
       - master
 
   # Do the builds on all pull requests (to test them)
-  pull_request: []
+  pull_request:
 
   release:
     types: [created]
