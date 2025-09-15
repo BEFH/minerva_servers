@@ -14,7 +14,7 @@ From: rockylinux/rockylinux:9
     dnf-plugins-core wget curl openssh-clients zsh gzip bzip2 xz git which \
     libnsl libxcrypt-compat acl epel-release git diffutils iputils \
     zip unzip traceroute bind-utils net-tools procps-ng lsof file gsl gsl-devel \
-    xdg-utils nss gtk3 
+    xdg-utils nss gtk3 libxkbfile
 
   ## Rocky 9 only ##
   dnf config-manager --set-enabled crb
