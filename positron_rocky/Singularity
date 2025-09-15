@@ -1,0 +1,91 @@
+Bootstrap: docker
+From: rockylinux/rockylinux:9
+
+# perl-CPAN cpan install LSF::Base LSF::Batch
+
+%post
+  NODE_VERSION=24.7.0
+  EZA_VERSION=0.23.2
+  QUARTO_VERSION=1.7.34
+  POSITRON_VERSION=2025.09.0-139
+
+  # Install necessary dependencies
+  dnf install -y --allowerasing \
+    dnf-plugins-core wget curl openssh-clients zsh gzip bzip2 xz git which \
+    libnsl libxcrypt-compat acl epel-release git diffutils iputils \
+    zip unzip traceroute bind-utils net-tools procps-ng lsof file gsl gsl-devel
+
+  ## Rocky 9 only ##
+  dnf config-manager --set-enabled crb
+  /bin/crb enable
+  # dnf -y localinstall "https://pkgs.dyn.su/el9/base/x86_64/raven-release.el9.noarch.rpm" #for compat-openssl10
+  dnf clean all && dnf update -y
+  ## end Rocky 9 only ##
+  
+  dnf install -y Lmod lua-devel fish && \
+    dnf clean all && \
+    rm -rf /var/cache/dnf # compat-openssl10 eza
+  wget https://github.com/eza-community/eza/releases/download/v${EZA_VERSION}/eza_x86_64-unknown-linux-gnu.tar.gz
+  tar xf eza_x86_64-unknown-linux-gnu.tar.gz
+  rm eza_x86_64-unknown-linux-gnu.tar.gz
+  mv eza /usr/local/bin/eza
+  ln -s $(which eza) /usr/local/bin/exa
+
+  # Install Conda
+  
+  wget -O Miniforge3.sh "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh" && \
+  bash Miniforge3.sh -b -p /opt/conda && \
+  rm Miniforge3.sh && \
+  echo "done"
+
+  # Install Positron
+
+  wget -O positron.rpm "https://cdn.posit.co/positron/releases/rpm/x86_64/Positron-${POSITRON_VERSION}-x64.rpm" && \
+    rpm -iv positron.rpm && \
+    rm positron.rpm
+
+  # install node
+
+  curl -fsSL https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz | \
+    tar -xJ -C /usr/local --strip-components=1 && \
+    ln -s /usr/local/bin/node /usr/bin/node && \
+    ln -s /usr/local/bin/npm /usr/bin/npm && \
+    ln -s /usr/local/bin/npx /usr/bin/npx
+
+  # Install quarto
+
+  curl -fsSL -o quarto.tar.gz \
+    https://github.com/quarto-dev/quarto-cli/releases/download/v${QUARTO_VERSION}/quarto-${QUARTO_VERSION}-linux-amd64.tar.gz && \
+    mkdir -p /opt/quarto && \
+    tar -xzf quarto.tar.gz -C /opt/quarto --strip-components=1 && \
+    ln -s /opt/quarto/bin/quarto /usr/local/bin/quarto && \
+    rm quarto.tar.gz
+
+%files
+    vscode_rocky/start_code.sh /opt/start_code.sh
+
+%environment
+    export S_CONDAENV=${S_CONDAENV:-$CONDA_DEFAULT_ENV}
+    [[ -z "$http_proxy" ]] || export http_proxy=$http_proxy
+    [[ -z "$https_proxy" ]] || export https_proxy=$https_proxy
+    [[ -z "$no_proxy" ]] || export no_proxy=$no_proxy
+    [[ -z "$ftp_proxy" ]] || export ftp_proxy=$ftp_proxy
+    [[ -z "$all_proxy" ]] || export all_proxy=$all_proxy
+    [[ -z "$rsync_proxy" ]] || export rsync_proxy=$rsync_proxy
+
+%apprun code
+    bash /opt/start_positron.sh "${@}"
+
+%apprun bash
+    #!/bin/bash
+    . /opt/conda/etc/profile.d/conda.sh && \
+    . /opt/conda/etc/profile.d/mamba.sh && \
+    alias ll='ls -l' && \
+    echo "activating env $RS_CONDAENV" && \
+    conda activate $RS_CONDAENV && \
+    echo "starting BASH" && \
+    /bin/bash
+
+%runscript
+    #!/bin/bash
+    bash /opt/start_positron.sh "${@}"
