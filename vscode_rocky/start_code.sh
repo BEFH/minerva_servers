@@ -20,6 +20,12 @@ fi
 
 # Activate the conda environment
 
+deactcount=0
+while [[ -n "$CONDA_PREFIX" && $deactcount -lt 5 ]]; do
+    conda deactivate
+    ((deactcount+=1))
+done
+
 conda activate $RS_CONDAENV
 
 # start vscode
