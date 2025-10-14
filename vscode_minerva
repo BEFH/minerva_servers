@@ -11,9 +11,10 @@
 #                  : Andreas Lugmayr, Mike Boss                               #
 #  Date            : October 2021                                             #
 #  Location        : Mount Sinai (originally ETH Zurich)                      #
-#  Version         : 0.9.0                                                    #
+#  Version         : 0.9.1                                                    #
 #  Change history  :                                                          #
 #                                                                             #
+#  14.10.2025    Check if conda env exists and error if not; new proxy.       #
 #  28.01.2025    Fix Minerva login addresses and shell prompts;               #
 #                Switch to apptainer; Fix container download;                 #
 #                Allow startup latency                                        #
@@ -76,7 +77,7 @@
 ###############################################################################
 
 # Version
-S_VERSION="0.9.0"
+S_VERSION="0.9.1"
 
 # Script directory
 S_SCRIPTDIR=$HOME
@@ -1267,16 +1268,41 @@ if [[ $S_CONDAENV == "null" ]]; then
   fi
   S_CONDAENV=$(echo $S_CONDAEP | awk '1 {print $1}' | tr -d '\r')
   S_PREFIX=$(echo $S_CONDAEP | awk '1 {print $2}' | tr -d '\r')
-elif [[ $S_CONDAENV =~ "/" ]]; then
-  S_PREFIX=$S_CONDAENV
-elif [[ $S_HOSTNAME == "minervarun" ]]; then
-  echodebug "Getting conda environment list"
-  S_PREFIX=$(conda info --envs |
-             awk -v env=$S_CONDAENV '$1 == env {print $2}')
 else
-  echodebug "Getting conda environment list"
-  S_PREFIX=$(ssh $S_HOSTNAME "conda info --envs" |
-             awk -v env=$S_CONDAENV '$1 == env {print $2}')
+  if [[ $S_CONDAENV =~ "/" ]]; then
+    S_PREFIX=$S_CONDAENV
+  elif [[ $S_HOSTNAME == "minervarun" ]]; then
+    echodebug "Getting conda environment list"
+    S_PREFIX=$(conda info --envs |
+               awk -v env=$S_CONDAENV '$1 == env {print $2}')
+  else
+    echodebug "Getting conda environment list"
+    S_PREFIX=$(ssh $S_HOSTNAME "conda info --envs" |
+               awk -v env=$S_CONDAENV '$1 == env {print $2}')
+  fi
+  if [[ -z "$S_PREFIX" ]]; then
+    echoerror "Environment '$S_CONDAENV' not found on Minerva. Is this a typo?"
+    exit 1
+  fi
+  if [[ $S_HOSTNAME == "minervarun" ]]; then
+    condacheck_paths=$(bash -c "
+      [ -d \"$S_PREFIX/conda-meta\" ] && printf 1
+      [ -f \"$S_PREFIX/bin/python\" ] && printf 2
+    ")
+  else
+    condacheck_paths=$(ssh "$S_HOSTNAME" "bash -c '
+      [ -d \"$S_PREFIX/conda-meta\" ] && printf 1
+      [ -f \"$S_PREFIX/bin/python\" ] && printf 2
+    '")
+  fi
+  if ! [[ $condacheck_paths =~ 1 ]]; then
+    echoerror "'$S_CONDAENV' is not a conda environment."
+    exit 1
+  elif ! [[ $condacheck_paths =~ 2 ]]; then
+    echowarn "Cannot find Python in the '$S_CONDAENV' environment."
+  else
+    echodebug "Passed all env checks."
+  fi
 fi
 
 echoinfo "Using environment $S_CONDAENV at $S_PREFIX"
@@ -1318,12 +1344,12 @@ echodebug "Done adding resource requirements to job script"
 
 S_CONTENTS_JOB+=$(cat <<EOF
 
-
-export http_proxy=http://172.28.7.1:3128
-export https_proxy=http://172.28.7.1:3128
-export all_proxy=http://172.28.7.1:3128
-export ftp_proxy=http://172.28.7.1:3128
-export rsync_proxy=http://172.28.7.1:3128
+prox=proxy.chimera.hpc.mssm.edu:3128
+export http_proxy=$prox
+export https_proxy=$prox
+export all_proxy=$prox
+export ftp_proxy=$prox
+export rsync_proxy=$prox
 export no_proxy=localhost,*.chimera.hpc.mssm.edu,172.28.0.0/16
 
 SINGULARITY_SHELL=/bin/bash

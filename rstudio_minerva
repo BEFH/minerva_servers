@@ -11,9 +11,10 @@
 #                  : Andreas Lugmayr, Mike Boss                               #
 #  Date            : October 2021                                             #
 #  Location        : Mount Sinai (originally ETH Zurich)                      #
-#  Version         : 0.9.0                                                    #
+#  Version         : 0.9.1                                                    #
 #  Change history  :                                                          #
 #                                                                             #
+#  14.10.2025    Check if conda env exists and error if not; new proxy.       #
 #  28.01.2025    Fix Minerva login addresses and switch to battach;           #
 #                Switch to apptainer.                                         #
 #  04.12.2024    Change Minerva detection for compatibility with new cluster  #
@@ -68,7 +69,7 @@
 ###############################################################################
 
 # Version
-S_VERSION="0.9.0"
+S_VERSION="0.9.1"
 
 # Script directory
 S_SCRIPTDIR=$HOME
@@ -665,6 +666,16 @@ macos_open () {
   fi
 }
 
+clipboard_copy () {
+  if [[ "$OSTYPE" == "linux-gnu" ]]; then
+    printf $1 | xclip -selection clipboard
+  elif [[ "$OSTYPE" == "darwin"* ]]; then
+    printf $1 | pbcopy
+  elif [[ "$OSTYPE" == "msys" ]]; then
+    printf $1 | clip
+  fi
+}
+
 instructs_mrun() {
   echoinfo "Choose an available port on your local computer and replace"
   echoinfo "LOCAL_PORT in the following command with the chosen port:"
@@ -747,6 +758,8 @@ if [ -f $S_RCI ]; then
       elif [[ "$OSTYPE" == "msys" ]]; then
         start $RC_URL
       fi
+    else
+      clipboard_copy $RC_URL
     fi
     exit 0
   else
@@ -949,16 +962,42 @@ if [[ $S_CONDAENV == "null" ]]; then
   fi
   S_CONDAENV=$(echo $S_CONDAEP | awk '1 {print $1}' | tr -d '\r')
   S_PREFIX=$(echo $S_CONDAEP | awk '1 {print $2}' | tr -d '\r')
-elif [[ $S_CONDAENV =~ "/" ]]; then
-  S_PREFIX=$S_CONDAENV
-elif [[ $S_HOSTNAME == "minervarun" ]]; then
-  echodebug "Getting conda environment list"
-  S_PREFIX=$(conda info --envs |
-             awk -v env=$S_CONDAENV '$1 == env {print $2}')
 else
-  echodebug "Getting conda environment list"
-  S_PREFIX=$(ssh $S_HOSTNAME "conda info --envs" |
-             awk -v env=$S_CONDAENV '$1 == env {print $2}')
+  if [[ $S_CONDAENV =~ "/" ]]; then
+    S_PREFIX=$S_CONDAENV
+  elif [[ $S_HOSTNAME == "minervarun" ]]; then
+    echodebug "Getting conda environment list"
+    S_PREFIX=$(conda info --envs |
+               awk -v env=$S_CONDAENV '$1 == env {print $2}')
+  else
+    echodebug "Getting conda environment list"
+    S_PREFIX=$(ssh $S_HOSTNAME "conda info --envs" |
+               awk -v env=$S_CONDAENV '$1 == env {print $2}')
+  fi
+  if [[ -z "$S_PREFIX" ]]; then
+    echoerror "Environment '$S_CONDAENV' not found on Minerva. Is this a typo?"
+    exit 1
+  fi
+if [[ $S_HOSTNAME == "minervarun" ]]; then
+    condacheck_paths=$(bash -c "
+      [ -d \"$S_PREFIX/conda-meta\" ] && printf 1
+      [ -f \"$S_PREFIX/bin/R\" ] && printf 2
+    ")
+  else
+    condacheck_paths=$(ssh "$S_HOSTNAME" "bash -c '
+      [ -d \"$S_PREFIX/conda-meta\" ] && printf 1
+      [ -f \"$S_PREFIX/bin/R\" ] && printf 2
+    '")
+fi
+    if ! [[ $condacheck_paths =~ 1 ]]; then
+      echoerror "'$S_CONDAENV' is not a conda environment."
+      exit 1
+    elif ! [[ $condacheck_paths =~ 2 ]]; then
+      echoerror "Cannot find R in the '$S_CONDAENV' environment."
+      exit 1
+    else
+      echodebug "Passed all env checks."
+      fi
 fi
 
 echoinfo "Using environment $S_CONDAENV at $S_PREFIX"
