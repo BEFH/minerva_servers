@@ -606,7 +606,7 @@ if ! test -e "$S_WORKDIR/rsession.conf"; then
 # add your configuration here
 session-timeout-minutes=9000
 copilot-enabled=1
-copilot-proxy-url=http://172.28.7.1:3128
+copilot-proxy-url=http://proxy.chimera.hpc.mssm.edu:3128
 EOFF
 fi
 if ! test -e "$S_WORKDIR/rserver.conf"; then
@@ -1029,11 +1029,12 @@ if [[ $S_DEBUG -eq 1 ]]; then
 fi
 
 S_CONTENTS_BASHPROF=$(cat <<EOF
-export http_proxy=http://172.28.7.1:3128
-export https_proxy=http://172.28.7.1:3128
-export ftp_proxy=http://172.28.7.1:3128
-export rsync_proxy=http://172.28.7.1:3128
-export all_proxy=http://172.28.7.1:3128
+prox="http://proxy.chimera.hpc.mssm.edu:3128/"
+export http_proxy="$prox"
+export https_proxy="$prox"
+export ftp_proxy="$prox"
+export rsync_proxy="$prox"
+export all_proxy="$prox"
 export no_proxy=localhost,*.chimera.hpc.mssm.edu,172.28.0.0/16
 minerva() {
   if [[ -z "\$LSB_JOBID" ]]; then
@@ -1087,7 +1088,7 @@ EOFF
 cd \$minervadir
 HOME=/hpc/users/\$USER
 if [[ "$SHELL" == "/bin/bash" ]] || [[ "$SHELL" == "bash" ]]; then
-  /bin/bash --rcfile $minerva_rc
+  /bin/bash --rcfile \$minerva_rc
 else
   \$SHELL -lc "source \$minerva_rc; exec \$SHELL"
 fi
@@ -1160,13 +1161,7 @@ echodebug "Done adding resource requirements to job script"
 
 S_CONTENTS_JOB+=$(cat <<EOF
 
-
-export http_proxy=http://172.28.7.1:3128
-export https_proxy=http://172.28.7.1:3128
-export all_proxy=http://172.28.7.1:3128
-export ftp_proxy=http://172.28.7.1:3128
-export rsync_proxy=http://172.28.7.1:3128
-export no_proxy=localhost,*.chimera.hpc.mssm.edu,172.28.0.0/16
+module load proxies
 
 SINGULARITY_SHELL=/bin/bash
 
