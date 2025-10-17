@@ -1050,7 +1050,7 @@ minerva() {
     SHELL="\$1"
   fi
   if [[ \$PWD == "/myhome" ]]; then
-    minervadir='\$HOME'
+    minervadir="/hpc/users/$S_USERNAME"
   else
     minervadir=\$PWD
   fi
@@ -1087,7 +1087,7 @@ EOFF
   cat << EOFF > "\$minerva_script"
 #!/bin/bash
 cd \$minervadir
-HOME=/hpc/users/\$USER
+HOME=/hpc/users/$S_USERNAME
 if [[ "$SHELL" == "/bin/bash" ]] || [[ "$SHELL" == "bash" ]]; then
   /bin/bash --rcfile \$minerva_rc
 else
