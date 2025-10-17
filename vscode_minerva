@@ -11,7 +11,7 @@
 #                  : Andreas Lugmayr, Mike Boss                               #
 #  Date            : October 2021                                             #
 #  Location        : Mount Sinai (originally ETH Zurich)                      #
-#  Version         : 0.9.1                                                    #
+#  Version         : 0.9.2                                                    #
 #  Change history  :                                                          #
 #                                                                             #
 #  14.10.2025    Check if conda env exists and error if not; new proxy.       #
@@ -77,7 +77,7 @@
 ###############################################################################
 
 # Version
-S_VERSION="0.9.1"
+S_VERSION="0.9.2"
 
 # Script directory
 S_SCRIPTDIR=$HOME
