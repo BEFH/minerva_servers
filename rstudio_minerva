@@ -11,9 +11,10 @@
 #                  : Andreas Lugmayr, Mike Boss                               #
 #  Date            : October 2021                                             #
 #  Location        : Mount Sinai (originally ETH Zurich)                      #
-#  Version         : 0.9.2                                                    #
+#  Version         : 0.9.3                                                    #
 #  Change history  :                                                          #
 #                                                                             #
+#  20.10.2025    Override ulimit -m to be total job memory to avoid mem err   #
 #  14.10.2025    Fix error in terminal creation for users with BASH shell     #
 #  14.10.2025    Check if conda env exists and error if not; new proxy        #
 #  28.01.2025    Fix Minerva login addresses and switch to battach;           #
@@ -70,7 +71,7 @@
 ###############################################################################
 
 # Version
-S_VERSION="0.9.2"
+S_VERSION="0.9.3"
 
 # Script directory
 S_SCRIPTDIR=$HOME
@@ -1216,6 +1217,8 @@ if [ -z "$S_PREFIX" ]; then
 fi
 
 source $S_FILE_PASSWORD
+
+ulimit -m $(( 1024 * $S_MEM_TOTAL ))
 
 echo "Starting rstudio service on port \$S_PORT_REMOTE ..."
 singularity run \\
