@@ -19,6 +19,7 @@ From: rocker/rstudio:4.6.1
     export RS_CONDAENV=${RS_CONDAENV:-$CONDA_DEFAULT_ENV}
 
 %apprun rserver
+    #!/bin/bash
     echo "Enabling conda"
     # >>> conda initialize >>>
     # !! Contents within this block are managed by 'conda init' !!
@@ -51,6 +52,7 @@ From: rocker/rstudio:4.6.1
     exec rserver "${@}"
 
 %apprun bash
+    #!/bin/bash
     echo "Enabling conda"
     
     # >>> conda initialize >>>
@@ -87,6 +89,7 @@ From: rocker/rstudio:4.6.1
     /bin/bash
 
 %runscript
+    #!/bin/bash
     echo "Enabling conda"
     # >>> conda initialize >>>
     # !! Contents within this block are managed by 'conda init' !!
