@@ -1264,7 +1264,6 @@ singularity run \\
   --bind $S_DIR_LOGCONF:/rstudio_logs \\
   --bind $S_TMP/tmp:/tmp/rstudio-server \\
   --bind /opt/hpc:/opt/hpc:ro \\
-  --app rserver \\
   --env PASSWORD=\$PASSWORD \\
   --env RS_CONDAENV=$S_CONDAENV \\
   --env USER=$S_USERNAME \\
