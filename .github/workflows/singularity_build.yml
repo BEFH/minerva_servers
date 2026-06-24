@@ -20,7 +20,7 @@ jobs:
       recipes: ${{ steps.ff.outputs.files }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Find recipe files (json output)
         id: ff
         run: |
@@ -40,7 +40,7 @@ jobs:
       recipes: ${{ steps.format.outputs.files }}
     steps:
       - id: files
-        uses: Ana06/get-changed-files@v2.3.0
+        uses: npwolf/get-changed-files@v1
         with:
           format: 'json'
           filter: '*Singularity*'
@@ -106,7 +106,7 @@ jobs:
     name: Build ${{ matrix.recipe }}
     steps:
       - name: Check out code for the container build
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Compute Names
         env:
