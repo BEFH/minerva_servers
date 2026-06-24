@@ -1,5 +1,5 @@
 Bootstrap: docker
-From: rocker/rstudio:4.5.1
+From: rocker/rstudio:4.6.1
 
 %post
     # lua-posix lua-posix-dev \
@@ -19,28 +19,101 @@ From: rocker/rstudio:4.5.1
     export RS_CONDAENV=${RS_CONDAENV:-$CONDA_DEFAULT_ENV}
 
 %apprun rserver
-    echo "enabling conda" && \
-      . /opt/conda/etc/profile.d/conda.sh && \
-      . /opt/conda/etc/profile.d/mamba.sh && \
-      alias ll='ls -l' && \
-      echo "activating env $RS_CONDAENV" && \
-      conda activate $RS_CONDAENV && \
-      echo "starting RStudio Server" && \
-      exec /usr/lib/rstudio-server/bin/rserver "${@}"
+    echo "Enabling conda"
+    # >>> conda initialize >>>
+    # !! Contents within this block are managed by 'conda init' !!
+    __conda_setup="$('/opt/conda/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
+    if [ $? -eq 0 ]; then
+      eval "$__conda_setup"
+    else
+      if [ -f "/opt/conda/etc/profile.d/conda.sh" ]; then
+        . "/opt/conda/etc/profile.d/conda.sh"
+      else
+        export PATH="/opt/conda/bin:$PATH"
+      fi
+    fi
+    unset __conda_setup
+    # <<< conda initialize <<<
+    
+    # >>> mamba initialize >>>
+    # !! Contents within this block are managed by 'mamba shell init' !!
+    export MAMBA_EXE='/opt/conda/bin/mamba';
+    export MAMBA_ROOT_PREFIX='/opt/conda';
+    __mamba_setup="$("$MAMBA_EXE" shell hook --shell bash --root-prefix "$MAMBA_ROOT_PREFIX" 2> /dev/null)"
+    if [ $? -eq 0 ]; then
+      eval "$__mamba_setup"
+    else
+      alias mamba="$MAMBA_EXE"  # Fallback on help from mamba activate
+    fi
+    unset __mamba_setup
+    # <<< mamba initialize <<<
+    echo "starting RStudio Server"
+    exec rserver "${@}"
 
 %apprun bash
-    echo "Enabling conda" && \
-      . /opt/conda/etc/profile.d/conda.sh && \
-      . /opt/conda/etc/profile.d/mamba.sh && \
-      alias ll='ls -l' && \
-      echo "activating env $RS_CONDAENV" && \
-      conda activate $RS_CONDAENV && \
-      echo "starting BASH" && \
-      /bin/bash
+    echo "Enabling conda"
+    
+    # >>> conda initialize >>>
+    # !! Contents within this block are managed by 'conda init' !!
+    __conda_setup="$('/opt/conda/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
+    if [ $? -eq 0 ]; then
+      eval "$__conda_setup"
+    else
+      if [ -f "/opt/conda/etc/profile.d/conda.sh" ]; then
+        . "/opt/conda/etc/profile.d/conda.sh"
+      else
+        export PATH="/opt/conda/bin:$PATH"
+      fi
+    fi
+    unset __conda_setup
+    # <<< conda initialize <<<
+    
+    # >>> mamba initialize >>>
+    # !! Contents within this block are managed by 'mamba shell init' !!
+    export MAMBA_EXE='/opt/conda/bin/mamba';
+    export MAMBA_ROOT_PREFIX='/opt/conda';
+    __mamba_setup="$("$MAMBA_EXE" shell hook --shell bash --root-prefix "$MAMBA_ROOT_PREFIX" 2> /dev/null)"
+    if [ $? -eq 0 ]; then
+      eval "$__mamba_setup"
+    else
+      alias mamba="$MAMBA_EXE"  # Fallback on help from mamba activate
+    fi
+    unset __mamba_setup
+    # <<< mamba initialize <<<
+    alias ll='ls -l'
+    echo "activating env $RS_CONDAENV"
+    conda activate $RS_CONDAENV
+    echo "starting BASH"
+    /bin/bash
 
 %runscript
-    echo "Enabling conda" && \
-      . /opt/conda/etc/profile.d/conda.sh && \
-      . /opt/conda/etc/profile.d/mamba.sh && \
-      echo "starting RStudio Server" && \
-      exec rserver "${@}"
+    echo "Enabling conda"
+    # >>> conda initialize >>>
+    # !! Contents within this block are managed by 'conda init' !!
+    __conda_setup="$('/opt/conda/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
+    if [ $? -eq 0 ]; then
+      eval "$__conda_setup"
+    else
+      if [ -f "/opt/conda/etc/profile.d/conda.sh" ]; then
+        . "/opt/conda/etc/profile.d/conda.sh"
+      else
+        export PATH="/opt/conda/bin:$PATH"
+      fi
+    fi
+    unset __conda_setup
+    # <<< conda initialize <<<
+    
+    # >>> mamba initialize >>>
+    # !! Contents within this block are managed by 'mamba shell init' !!
+    export MAMBA_EXE='/opt/conda/bin/mamba';
+    export MAMBA_ROOT_PREFIX='/opt/conda';
+    __mamba_setup="$("$MAMBA_EXE" shell hook --shell bash --root-prefix "$MAMBA_ROOT_PREFIX" 2> /dev/null)"
+    if [ $? -eq 0 ]; then
+      eval "$__mamba_setup"
+    else
+      alias mamba="$MAMBA_EXE"  # Fallback on help from mamba activate
+    fi
+    unset __mamba_setup
+    # <<< mamba initialize <<<
+    echo "starting RStudio Server"
+    exec rserver "${@}"
