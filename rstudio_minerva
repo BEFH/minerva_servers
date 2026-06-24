@@ -11,9 +11,10 @@
 #                  : Andreas Lugmayr, Mike Boss                               #
 #  Date            : October 2021                                             #
 #  Location        : Mount Sinai (originally ETH Zurich)                      #
-#  Version         : 0.9.3                                                    #
+#  Version         : 0.9.4                                                    #
 #  Change history  :                                                          #
 #                                                                             #
+#  24.06.2026    Fix sed command for generating password                      #
 #  20.10.2025    Override ulimit -m to be total job memory to avoid mem err   #
 #  14.10.2025    Fix error in terminal creation for users with BASH shell     #
 #  14.10.2025    Check if conda env exists and error if not; new proxy        #
@@ -579,7 +580,7 @@ EOF
 )
 
 if [[ $pass_exists -eq 0 ]]; then
-  pass=$(openssl rand -base64 30 | sed 's/[^0-9A-z]//g')
+  pass=$(openssl rand -base64 30 | sed 's/[^0-9A-Za-z]//g')
   echoinfo "Password automatically generated: $pass"
   eval_heredoc <<EOF
 mkdir -p $(dirname $S_FILE_PASSWORD)
@@ -1120,9 +1121,38 @@ fi
 
 S_CONTENTS_BASHPROF+=$(cat <<EOF
 
-. /opt/conda/etc/profile.d/conda.sh && \\
-. /opt/conda/etc/profile.d/mamba.sh && \\
-alias ll='ls -l' && \
+#. /opt/conda/etc/profile.d/conda.sh
+#. /opt/conda/etc/profile.d/mamba.sh && \\
+alias ll='ls -l'
+
+# >>> conda initialize >>>
+# !! Contents within this block are managed by 'conda init' !!
+__conda_setup="$('/opt/conda/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
+if [ $? -eq 0 ]; then
+    eval "$__conda_setup"
+else
+    if [ -f "/opt/conda/etc/profile.d/conda.sh" ]; then
+        . "/opt/conda/etc/profile.d/conda.sh"
+    else
+        export PATH="/opt/conda/bin:$PATH"
+    fi
+fi
+unset __conda_setup
+# <<< conda initialize <<<
+
+# >>> mamba initialize >>>
+# !! Contents within this block are managed by 'mamba shell init' !!
+export MAMBA_EXE='/opt/conda/bin/mamba';
+export MAMBA_ROOT_PREFIX='/opt/conda';
+__mamba_setup="$("$MAMBA_EXE" shell hook --shell bash --root-prefix "$MAMBA_ROOT_PREFIX" 2> /dev/null)"
+if [ $? -eq 0 ]; then
+    eval "$__mamba_setup"
+else
+    alias mamba="$MAMBA_EXE"  # Fallback on help from mamba activate
+fi
+unset __mamba_setup
+# <<< mamba initialize <<<
+
 mamba activate $S_CONDAENV
 EOF
 )
